@@ -1,46 +1,49 @@
-require('dotenv').config();
-const express = require('express');
-const http = require('http');
-const helmet = require('helmet');
+require("dotenv").config();
+const express = require("express");
+const http = require("http");
+const helmet = require("helmet");
 const { Server } = require("socket.io");
-const { RateLimiterMemory } = require('rate-limiter-flexible');
-const path = require('path');
+const { RateLimiterMemory } = require("rate-limiter-flexible");
+const path = require("path");
 
-const { initializePool, closePool } = require('./config/db');
-const { authenticateSocket } = require('./middleware/auth');
-const EventManager = require('./services/eventManager');
+const { initializePool, closePool } = require("./config/db");
+const { authenticateSocket } = require("./middleware/auth");
+const EventManager = require("./services/eventManager");
 
 // Import API routes
-const apiAuth = require('./routes/api-auth');
-const apiEvents = require('./routes/api-events');
-const apiMonitoring = require('./routes/api-monitoring');
+const apiAuth = require("./routes/api-auth");
+const apiEvents = require("./routes/api-events");
+const apiMonitoring = require("./routes/api-monitoring");
 
 const app = express();
 
 // --- MIDDLEWARE ---
 app.use(helmet()); // Security headers
-app.disable('x-powered-by');
+app.disable("x-powered-by");
 
 // Parse JSON bodies
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // CORS for API endpoints (allow React dev server)
 app.use((req, res, next) => {
   const allowedOrigins = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',')
-    : ['http://localhost:3000', 'http://localhost:5173'];
+    ? process.env.ALLOWED_ORIGINS.split(",")
+    : ["http://localhost:3000", "http://localhost:5173"];
 
   const origin = req.headers.origin;
   if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader("Access-Control-Allow-Origin", origin);
   }
 
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+  );
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
 
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return res.sendStatus(200);
   }
 
@@ -48,40 +51,40 @@ app.use((req, res, next) => {
 });
 
 // --- API ROUTES ---
-app.use('/api/admin', apiAuth);
-app.use('/api/events', apiEvents);
-app.use('/api/monitoring', apiMonitoring);
+app.use("/api/admin", apiAuth);
+app.use("/api/events", apiEvents);
+app.use("/api/monitoring", apiMonitoring);
 
 // Basic health check (no auth required)
-app.get('/health', (req, res) => {
+app.get("/health", (req, res) => {
   res.json({
-    status: 'ok',
+    status: "ok",
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
   });
 });
 
 // Serve React admin UI in production
-if (process.env.NODE_ENV === 'production') {
-  const clientBuildPath = path.join(__dirname, '../client/dist');
-  app.use('/admin', express.static(clientBuildPath));
+if (process.env.NODE_ENV === "production") {
+  const clientBuildPath = path.join(__dirname, "../client/dist");
+  app.use("/admin", express.static(clientBuildPath));
 
-  app.get('/admin/*', (req, res) => {
-    res.sendFile(path.join(clientBuildPath, 'index.html'));
+  app.get("/admin/*", (req, res) => {
+    res.sendFile(path.join(clientBuildPath, "index.html"));
   });
 }
 
 // Default route
-app.get('/', (req, res) => {
+app.get("/", (req, res) => {
   res.json({
-    name: 'TPKS Dashboard WebSocket Server',
-    version: '1.0.0',
-    status: 'running',
+    name: "TPKS Dashboard WebSocket Server",
+    version: "1.0.0",
+    status: "running",
     endpoints: {
-      health: '/health',
-      admin: '/admin',
-      api: '/api'
-    }
+      health: "/health",
+      admin: "/admin",
+      api: "/api",
+    },
   });
 });
 
@@ -89,21 +92,21 @@ const server = http.createServer(app);
 
 // --- WEBSOCKET CONFIGURATION ---
 const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',')
-  : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8080'];
+  ? process.env.ALLOWED_ORIGINS.split(",")
+  : ["http://localhost:3000", "http://localhost:5173", "http://localhost:8080"];
 
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
     methods: ["GET", "POST"],
-    credentials: true
+    credentials: true,
   },
   maxHttpBufferSize: 1e6,
   pingTimeout: 60000,
   pingInterval: 15000,
   connectionStateRecovery: {
     maxDisconnectionDuration: 2 * 60 * 1000,
-  }
+  },
 });
 
 // --- RATE LIMITING ---
@@ -133,67 +136,78 @@ io.use(async (socket, next) => {
     next();
   } catch (error) {
     console.warn(`⚠️  Rate limit exceeded for IP: ${ip}`);
-    next(new Error('Too many connection attempts. Please try again later.'));
+    next(new Error("Too many connection attempts. Please try again later."));
   }
 });
 
 // --- WEBSOCKET CONNECTION HANDLER ---
-io.on('connection', (socket) => {
+io.on("connection", (socket) => {
   activeConnections++;
 
   // Check connection limit
   if (activeConnections > MAX_CONNECTIONS) {
-    console.warn(`⚠️  Max connections reached (${MAX_CONNECTIONS}). Rejecting connection.`);
-    socket.emit('error', { message: 'Server at capacity' });
+    console.warn(
+      `⚠️  Max connections reached (${MAX_CONNECTIONS}). Rejecting connection.`
+    );
+    socket.emit("error", { message: "Server at capacity" });
     socket.disconnect(true);
     activeConnections--;
     return;
   }
 
-  console.log('✅ User connected:', socket.id,
-    `| User:`, socket.user?.userId || socket.user?.type || 'unknown',
-    `| Total: ${activeConnections}`);
+  console.log(
+    "✅ User connected:",
+    socket.id,
+    `| User:`,
+    socket.user?.userId || socket.user?.type || "unknown",
+    `| Total: ${activeConnections}`
+  );
 
-  // NEW: Check sleep mode on connection
-  const eventManager = app.get('eventManager');
+  // Check sleep mode on connection
+  const eventManager = app.get("eventManager");
   if (eventManager) {
+    console.log(`🔄 Client connected, checking sleep mode...`);
     eventManager.checkSleepMode();
   }
 
   // Handle client request for updates
-  socket.on('REQUEST_UPDATE', async (data) => {
+  socket.on("REQUEST_UPDATE", async (data) => {
     try {
       await rateLimiter.consume(socket.id);
 
-      if (data && typeof data === 'object') {
+      if (data && typeof data === "object") {
         // Client requested update - handled by event manager broadcasts
-        console.log('Client requested update:', socket.id);
+        console.log("Client requested update:", socket.id);
       }
     } catch (error) {
       if (error instanceof Error) {
-        socket.emit('error', { message: 'Request rate limit exceeded' });
+        socket.emit("error", { message: "Request rate limit exceeded" });
       }
     }
   });
 
   // NEW: Handle client request for initial cached state (Data Hydration)
-  socket.on('REQUEST_INITIAL_STATE', async (data) => {
+  socket.on("REQUEST_INITIAL_STATE", async (data) => {
     try {
       await rateLimiter.consume(socket.id);
 
-      const eventManager = app.get('eventManager');
+      const eventManager = app.get("eventManager");
 
       // Require client to specify event names (Option B)
-      if (!data?.eventNames || !Array.isArray(data.eventNames) || data.eventNames.length === 0) {
-        socket.emit('error', {
-          message: 'eventNames array required',
-          example: { eventNames: ['Vessel Alongside'] }
+      if (
+        !data?.eventNames ||
+        !Array.isArray(data.eventNames) ||
+        data.eventNames.length === 0
+      ) {
+        socket.emit("error", {
+          message: "eventNames array required",
+          example: { eventNames: ["Vessel Alongside"] },
         });
         return;
       }
 
       // Send only requested events
-      data.eventNames.forEach(eventName => {
+      for (const eventName of data.eventNames) {
         const cached = eventManager.getCachedDataByName(eventName);
         if (cached) {
           const channel = eventManager.getEventChannel(eventName);
@@ -203,30 +217,43 @@ io.on('connection', (socket) => {
             rowCount: cached.rowCount,
             timestamp: cached.timestamp.toISOString(),
             fromCache: true,
-            cacheAge: cached.age
+            cacheAge: cached.age,
           });
-          console.log(`📦 Sent cached "${eventName}" to ${socket.id} (${cached.age}ms old)`);
+          console.log(
+            `📦 Sent cached "${eventName}" to ${socket.id} (${cached.age}ms old)`
+          );
         } else {
-          console.warn(`⚠️  No cache found for "${eventName}"`);
+          console.warn(
+            `⚠️  No cache found for "${eventName}", triggering immediate query...`
+          );
+          // Trigger immediate execution for this event
+          const triggered = await eventManager.triggerEventByName(eventName);
+          if (!triggered) {
+            console.error(`❌ Failed to trigger event: "${eventName}"`);
+          }
         }
-      });
+      }
     } catch (error) {
       if (error instanceof Error) {
-        socket.emit('error', { message: 'Request rate limit exceeded' });
+        socket.emit("error", { message: "Request rate limit exceeded" });
       }
     }
   });
 
   // Disconnect handler
-  socket.on('disconnect', (reason) => {
+  socket.on("disconnect", (reason) => {
     activeConnections--;
-    console.log('❌ User disconnected:', socket.id,
+    console.log(
+      "❌ User disconnected:",
+      socket.id,
       `| Reason: ${reason}`,
-      `| Total: ${activeConnections}`);
+      `| Total: ${activeConnections}`
+    );
 
-    // NEW: Check sleep mode on disconnect
-    const eventManager = app.get('eventManager');
+    // Check sleep mode on disconnect
+    const eventManager = app.get("eventManager");
     if (eventManager) {
+      console.log(`🔄 Client disconnected, checking sleep mode...`);
       eventManager.checkSleepMode();
     }
   });
@@ -243,24 +270,23 @@ async function startApp() {
     await eventManager.initialize();
 
     // Make eventManager and io available to routes
-    app.set('eventManager', eventManager);
-    app.set('io', io);
+    app.set("eventManager", eventManager);
+    app.set("io", io);
 
     // 3. Start server
     const PORT = process.env.PORT || 3000;
     server.listen(PORT, () => {
-      console.log(`\n${'='.repeat(60)}`);
+      console.log(`\n${"=".repeat(60)}`);
       console.log(`🚀 TPKS Dashboard WebSocket Server`);
-      console.log(`${'='.repeat(60)}`);
+      console.log(`${"=".repeat(60)}`);
       console.log(`📍 Port: ${PORT}`);
-      console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`🔒 Allowed origins: ${allowedOrigins.join(', ')}`);
+      console.log(`📍 Environment: ${process.env.NODE_ENV || "development"}`);
+      console.log(`🔒 Allowed origins: ${allowedOrigins.join(", ")}`);
       console.log(`📊 Active events: ${eventManager.events.size}`);
-      console.log(`${'='.repeat(60)}\n`);
+      console.log(`${"=".repeat(60)}\n`);
     });
-
   } catch (error) {
-    console.error('❌ Startup failed:', error.message);
+    console.error("❌ Startup failed:", error.message);
     process.exit(1);
   }
 }
@@ -271,25 +297,25 @@ async function gracefulShutdown(signal) {
 
   // Stop accepting new connections
   server.close(() => {
-    console.log('✅ HTTP server closed');
+    console.log("✅ HTTP server closed");
   });
 
   // Stop event manager
-  const eventManager = app.get('eventManager');
+  const eventManager = app.get("eventManager");
   if (eventManager) {
     eventManager.stopAll();
-    console.log('✅ Event manager stopped');
+    console.log("✅ Event manager stopped");
   }
 
   // Close database pool
   await closePool();
 
-  console.log('✅ Graceful shutdown complete');
+  console.log("✅ Graceful shutdown complete");
   process.exit(0);
 }
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 // Start the application
 startApp();

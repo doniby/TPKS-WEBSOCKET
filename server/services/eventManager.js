@@ -1,5 +1,5 @@
-const { getPool, oracledb } = require('../config/db');
-const crypto = require('crypto');
+const { getPool, oracledb } = require("../config/db");
+const crypto = require("crypto");
 
 class EventManager {
   constructor(io) {
@@ -17,14 +17,15 @@ class EventManager {
 
     // Sleep mode configuration
     this.isSleeping = false;
-    this.sleepModeEnabled = (process.env.SLEEP_MODE_ENABLED !== 'false'); // Default: true
+    this.sleepModeEnabled = process.env.SLEEP_MODE_ENABLED !== "false"; // Default: true
+    this.sleepOnStartup = process.env.SLEEP_ON_STARTUP !== "false"; // NEW: Default: true
     this.sleepDelay = parseInt(process.env.SLEEP_MODE_DELAY) || 30000; // 30 seconds
     this.sleepTimer = null;
   }
 
   async initialize() {
     if (this.isInitialized) {
-      console.warn('⚠️  EventManager already initialized');
+      console.warn("⚠️  EventManager already initialized");
       return;
     }
 
@@ -32,9 +33,11 @@ class EventManager {
       // Use staggered load on startup to prevent connection pool exhaustion
       await this.loadEventsStaggered();
       this.isInitialized = true;
-      console.log(`✅ EventManager initialized with ${this.events.size} active events`);
+      console.log(
+        `✅ EventManager initialized with ${this.events.size} active events`
+      );
     } catch (error) {
-      console.error('❌ EventManager initialization failed:', error.message);
+      console.error("❌ EventManager initialization failed:", error.message);
       throw error;
     }
   }
@@ -55,8 +58,8 @@ class EventManager {
         {
           outFormat: oracledb.OUT_FORMAT_OBJECT,
           fetchInfo: {
-            SQL_QUERY: { type: oracledb.STRING }  // Convert CLOB to string
-          }
+            SQL_QUERY: { type: oracledb.STRING }, // Convert CLOB to string
+          },
         }
       );
 
@@ -68,14 +71,15 @@ class EventManager {
           eventId: row.EVENT_ID,
           eventName: row.EVENT_NAME,
           sqlQuery: row.SQL_QUERY,
-          intervalSeconds: row.INTERVAL_SECONDS
+          intervalSeconds: row.INTERVAL_SECONDS,
         });
       }
 
-      console.log(`📊 Loaded ${result.rows.length} active events from database`);
-
+      console.log(
+        `📊 Loaded ${result.rows.length} active events from database`
+      );
     } catch (error) {
-      console.error('Error loading events:', error.message);
+      console.error("Error loading events:", error.message);
       throw error;
     } finally {
       if (connection) {
@@ -105,29 +109,34 @@ class EventManager {
         {
           outFormat: oracledb.OUT_FORMAT_OBJECT,
           fetchInfo: {
-            SQL_QUERY: { type: oracledb.STRING }  // Convert CLOB to string
-          }
+            SQL_QUERY: { type: oracledb.STRING }, // Convert CLOB to string
+          },
         }
       );
 
       this.stopAll();
 
-      const eventConfigs = result.rows.map(row => ({
+      const eventConfigs = result.rows.map((row) => ({
         eventId: row.EVENT_ID,
         eventName: row.EVENT_NAME,
         sqlQuery: row.SQL_QUERY,
-        intervalSeconds: row.INTERVAL_SECONDS
+        intervalSeconds: row.INTERVAL_SECONDS,
       }));
 
       if (eventConfigs.length === 0) {
-        console.log('📊 No active events to load');
+        console.log("📊 No active events to load");
         return;
       }
 
       // Calculate stagger interval
-      const smallestInterval = Math.min(...eventConfigs.map(e => e.intervalSeconds));
+      const smallestInterval = Math.min(
+        ...eventConfigs.map((e) => e.intervalSeconds)
+      );
       const staggerDelay = Math.max(
-        Math.min((smallestInterval * 1000) / eventConfigs.length, this.maxStaggerDelay / eventConfigs.length),
+        Math.min(
+          (smallestInterval * 1000) / eventConfigs.length,
+          this.maxStaggerDelay / eventConfigs.length
+        ),
         500 // Minimum 500ms between starts
       );
 
@@ -150,13 +159,19 @@ class EventManager {
       setTimeout(() => {
         this.isStaggering = false;
         console.log(`✅ All ${eventConfigs.length} events started`);
-      }, totalStaggerTime + 1000);
 
+        // NEW: Check if we should immediately go to sleep (no clients connected)
+        if (this.sleepOnStartup) {
+          setTimeout(() => {
+            this.checkSleepMode();
+          }, 1000); // Check after 1 second to ensure all events are initialized
+        }
+      }, totalStaggerTime + 1000);
     } catch (error) {
-      console.error('Error loading events with stagger:', error.message);
+      console.error("Error loading events with stagger:", error.message);
       this.isStaggering = false;
       // Fallback to immediate load
-      console.warn('⚠️  Falling back to immediate load');
+      console.warn("⚠️  Falling back to immediate load");
       await this.loadEvents();
     } finally {
       if (connection) {
@@ -196,8 +211,8 @@ class EventManager {
         lastExecutionStatus: null,
         lastExecutionTimestamp: null,
         skippedCount: 0, // Skipped due to previous execution still running
-        broadcasts: 0
-      }
+        broadcasts: 0,
+      },
     };
 
     // Execute immediately on start
@@ -210,7 +225,9 @@ class EventManager {
 
     this.events.set(eventId, eventData);
 
-    console.log(`▶️  Started event: "${eventName}" (ID: ${eventId}) - Interval: ${intervalSeconds}s`);
+    console.log(
+      `▶️  Started event: "${eventName}" (ID: ${eventId}) - Interval: ${intervalSeconds}s`
+    );
   }
 
   /**
@@ -244,8 +261,8 @@ class EventManager {
         lastExecutionStatus: null,
         lastExecutionTimestamp: null,
         skippedCount: 0,
-        broadcasts: 0
-      }
+        broadcasts: 0,
+      },
     };
 
     this.events.set(eventId, eventData);
@@ -260,7 +277,9 @@ class EventManager {
       this.executeEvent(eventId, eventData);
     }, intervalSeconds * 1000);
 
-    console.log(`▶️  Started event: "${eventName}" (ID: ${eventId}) - Interval: ${intervalSeconds}s`);
+    console.log(
+      `▶️  Started event: "${eventName}" (ID: ${eventId}) - Interval: ${intervalSeconds}s`
+    );
   }
 
   /**
@@ -272,7 +291,9 @@ class EventManager {
     // Prevent overlap: Skip if previous execution still running
     if (eventData.isRunning) {
       eventData.stats.skippedCount++;
-      console.warn(`⏭️  Skipping event "${eventName}" - Previous execution still running`);
+      console.warn(
+        `⏭️  Skipping event "${eventName}" - Previous execution still running`
+      );
       return;
     }
 
@@ -286,18 +307,17 @@ class EventManager {
     try {
       connection = await pool.getConnection();
 
-      const result = await connection.execute(
-        sqlQuery,
-        [],
-        {
-          outFormat: oracledb.OUT_FORMAT_OBJECT,
-          maxRows: 50, // Limit result size
-          fetchArraySize: 100
-        }
-      );
+      const result = await connection.execute(sqlQuery, [], {
+        outFormat: oracledb.OUT_FORMAT_OBJECT,
+        maxRows: 50, // Limit result size
+        fetchArraySize: 100,
+      });
 
       const executionTime = Date.now() - startTime;
-      const dataHash = crypto.createHash('md5').update(JSON.stringify(result.rows)).digest('hex');
+      const dataHash = crypto
+        .createHash("md5")
+        .update(JSON.stringify(result.rows))
+        .digest("hex");
 
       // Only broadcast if data has changed
       if (dataHash !== eventData.lastDataHash) {
@@ -306,15 +326,20 @@ class EventManager {
 
         // NEW: Store cached data with memory management
         const dataString = JSON.stringify(result.rows);
-        const dataSizeBytes = Buffer.byteLength(dataString, 'utf8');
+        const dataSizeBytes = Buffer.byteLength(dataString, "utf8");
         const maxSizeBytes = this.maxCacheSize * 1024 * 1024;
 
         if (dataSizeBytes > maxSizeBytes) {
           // Truncate to first 100 rows if exceeds limit
           eventData.cachedData = result.rows.slice(0, 100);
           eventData.cacheTruncated = true;
-          eventData.cacheSize = Buffer.byteLength(JSON.stringify(eventData.cachedData), 'utf8');
-          console.warn(`⚠️  Cache for "${eventName}" exceeds ${this.maxCacheSize}MB, truncated to 100 rows`);
+          eventData.cacheSize = Buffer.byteLength(
+            JSON.stringify(eventData.cachedData),
+            "utf8"
+          );
+          console.warn(
+            `⚠️  Cache for "${eventName}" exceeds ${this.maxCacheSize}MB, truncated to 100 rows`
+          );
         } else {
           eventData.cachedData = result.rows;
           eventData.cacheTruncated = false;
@@ -329,37 +354,41 @@ class EventManager {
           data: result.rows,
           rowCount: result.rows.length,
           timestamp: new Date().toISOString(),
-          executionTime: executionTime
+          executionTime: executionTime,
         };
 
         // Broadcast to all connected clients
         this.io.emit(this.getEventChannel(eventName), broadcastData);
 
-        console.log(`✅ Event "${eventName}" executed and broadcasted (${executionTime}ms, ${result.rows.length} rows, cache: ${(eventData.cacheSize / 1024).toFixed(2)}KB)`);
-
+        console.log(
+          `✅ Event "${eventName}" executed and broadcasted (${executionTime}ms, ${
+            result.rows.length
+          } rows, cache: ${(eventData.cacheSize / 1024).toFixed(2)}KB)`
+        );
       } else {
-        console.log(`✅ Event "${eventName}" executed but data was unchanged (${executionTime}ms, ${result.rows.length} rows)`);
+        console.log(
+          `✅ Event "${eventName}" executed but data was unchanged (${executionTime}ms, ${result.rows.length} rows)`
+        );
       }
 
       // Update stats (in memory only for success)
       eventData.stats.successCount++;
       eventData.stats.lastExecutionTime = executionTime;
-      eventData.stats.lastExecutionStatus = 'success';
+      eventData.stats.lastExecutionStatus = "success";
       eventData.stats.lastExecutionTimestamp = new Date();
 
       // REMOVED: Database write for success (now memory-only)
       // Success stats are kept in memory to reduce database writes by ~90%
-
     } catch (error) {
       const executionTime = Date.now() - startTime;
 
       eventData.stats.errorCount++;
       eventData.stats.lastExecutionTime = executionTime;
-      eventData.stats.lastExecutionStatus = 'error';
+      eventData.stats.lastExecutionStatus = "error";
       eventData.stats.lastExecutionTimestamp = new Date();
 
       // Update database stats
-      await this.updateEventStats(eventId, executionTime, 'error');
+      await this.updateEventStats(eventId, executionTime, "error");
 
       console.error(`❌ Event "${eventName}" execution failed:`, error.message);
 
@@ -367,10 +396,9 @@ class EventManager {
       this.io.emit(this.getEventChannel(eventName), {
         eventName: eventName,
         error: true,
-        message: 'Data temporarily unavailable',
-        timestamp: new Date().toISOString()
+        message: "Data temporarily unavailable",
+        timestamp: new Date().toISOString(),
       });
-
     } finally {
       eventData.isRunning = false;
 
@@ -388,7 +416,7 @@ class EventManager {
    */
   async updateEventStats(eventId, executionTime, status) {
     // NEW: Only write to database on errors
-    if (status !== 'error') {
+    if (status !== "error") {
       return; // Skip database write for success
     }
 
@@ -408,15 +436,14 @@ class EventManager {
         {
           executionTime: executionTime,
           status: status,
-          eventId: eventId
+          eventId: eventId,
         },
         { autoCommit: true }
       );
 
       console.warn(`⚠️  Error logged to database for event ${eventId}`);
-
     } catch (error) {
-      console.error('Error updating event stats:', error.message);
+      console.error("Error updating event stats:", error.message);
       // Don't throw - error is already tracked in memory
     } finally {
       if (connection) {
@@ -450,14 +477,14 @@ class EventManager {
       }
     }
     this.events.clear();
-    console.log('⏸️  All events stopped');
+    console.log("⏸️  All events stopped");
   }
 
   /**
    * Reload all events from database (for CRUD operations)
    */
   async reload() {
-    console.log('🔄 Reloading events...');
+    console.log("🔄 Reloading events...");
     await this.loadEvents();
   }
 
@@ -466,7 +493,7 @@ class EventManager {
    * Converts "Vessel Alongside" -> "VESSEL_ALONGSIDE"
    */
   getEventChannel(eventName) {
-    return eventName.toUpperCase().replace(/\s+/g, '_');
+    return eventName.toUpperCase().replace(/\s+/g, "_");
   }
 
   /**
@@ -481,7 +508,7 @@ class EventManager {
         eventName: eventData.config.eventName,
         intervalSeconds: eventData.config.intervalSeconds,
         isRunning: eventData.isRunning,
-        stats: eventData.stats
+        stats: eventData.stats,
       });
     }
 
@@ -493,13 +520,15 @@ class EventManager {
    */
   getEventStats(eventId) {
     const eventData = this.events.get(eventId);
-    return eventData ? {
-      eventId: eventId,
-      eventName: eventData.config.eventName,
-      intervalSeconds: eventData.config.intervalSeconds,
-      isRunning: eventData.isRunning,
-      stats: eventData.stats
-    } : null;
+    return eventData
+      ? {
+          eventId: eventId,
+          eventName: eventData.config.eventName,
+          intervalSeconds: eventData.config.intervalSeconds,
+          isRunning: eventData.isRunning,
+          stats: eventData.stats,
+        }
+      : null;
   }
 
   /**
@@ -517,9 +546,11 @@ class EventManager {
       data: eventData.cachedData,
       rowCount: eventData.cachedData.length,
       timestamp: eventData.cacheTimestamp,
-      age: eventData.cacheTimestamp ? Date.now() - eventData.cacheTimestamp.getTime() : null,
+      age: eventData.cacheTimestamp
+        ? Date.now() - eventData.cacheTimestamp.getTime()
+        : null,
       truncated: eventData.cacheTruncated || false,
-      cacheSize: eventData.cacheSize
+      cacheSize: eventData.cacheSize,
     };
   }
 
@@ -533,6 +564,22 @@ class EventManager {
       }
     }
     return null;
+  }
+
+  /**
+   * Trigger immediate execution of an event by name
+   * Used when client requests data but cache is not populated yet
+   */
+  async triggerEventByName(eventName) {
+    for (const [eventId, eventData] of this.events.entries()) {
+      if (eventData.config.eventName === eventName) {
+        console.log(`🔄 Triggering immediate execution for "${eventName}"`);
+        await this.executeEvent(eventId, eventData);
+        return true;
+      }
+    }
+    console.warn(`⚠️  Event not found: "${eventName}"`);
+    return false;
   }
 
   /**
@@ -551,9 +598,11 @@ class EventManager {
         stats: {
           ...eventData.stats,
           cacheSize: eventData.cacheSize,
-          cacheAge: eventData.cacheTimestamp ? Date.now() - eventData.cacheTimestamp.getTime() : null,
-          cacheTruncated: eventData.cacheTruncated
-        }
+          cacheAge: eventData.cacheTimestamp
+            ? Date.now() - eventData.cacheTimestamp.getTime()
+            : null,
+          cacheTruncated: eventData.cacheTruncated,
+        },
       });
     }
 
@@ -564,9 +613,16 @@ class EventManager {
    * Check sleep mode and wake/sleep accordingly based on client connections
    */
   checkSleepMode() {
-    if (!this.sleepModeEnabled) return;
+    if (!this.sleepModeEnabled) {
+      console.log("💡 Sleep mode disabled via config");
+      return;
+    }
 
     const connectedClients = this.io.engine.clientsCount;
+
+    console.log(
+      `🔍 Sleep check: ${connectedClients} client(s) connected, sleeping: ${this.isSleeping}`
+    );
 
     // Wake up: Clients connected and we're sleeping
     if (connectedClients > 0 && this.isSleeping) {
@@ -580,6 +636,8 @@ class EventManager {
         clearTimeout(this.sleepTimer);
       }
 
+      console.log(`⏱️  Scheduling sleep in ${this.sleepDelay / 1000}s...`);
+
       this.sleepTimer = setTimeout(() => {
         // Double-check client count before sleeping
         if (this.io.engine.clientsCount === 0) {
@@ -590,6 +648,7 @@ class EventManager {
 
     // Cancel sleep timer if clients reconnect
     if (connectedClients > 0 && this.sleepTimer) {
+      console.log("⏰ Sleep cancelled - client connected");
       clearTimeout(this.sleepTimer);
       this.sleepTimer = null;
     }
@@ -601,7 +660,7 @@ class EventManager {
   goToSleep() {
     if (this.isSleeping) return;
 
-    console.log('💤 Sleep mode activated - No clients connected');
+    console.log("💤 Sleep mode activated - No clients connected");
     this.isSleeping = true;
 
     // Pause all timers (but keep event config and cache)
@@ -624,7 +683,7 @@ class EventManager {
   async wakeUp() {
     if (!this.isSleeping) return;
 
-    console.log('⏰ Waking up from sleep mode - Client connected');
+    console.log("⏰ Waking up from sleep mode - Client connected");
     this.isSleeping = false;
 
     // Get all event configs
@@ -634,18 +693,25 @@ class EventManager {
     }
 
     if (eventConfigs.length === 0) {
-      console.log('⚠️  No events to wake');
+      console.log("⚠️  No events to wake");
       return;
     }
 
     // Calculate stagger interval for wake-up
-    const smallestInterval = Math.min(...eventConfigs.map(e => e.intervalSeconds));
+    const smallestInterval = Math.min(
+      ...eventConfigs.map((e) => e.intervalSeconds)
+    );
     const staggerDelay = Math.max(
-      Math.min((smallestInterval * 1000) / eventConfigs.length, this.maxStaggerDelay / eventConfigs.length),
+      Math.min(
+        (smallestInterval * 1000) / eventConfigs.length,
+        this.maxStaggerDelay / eventConfigs.length
+      ),
       500
     );
 
-    console.log(`▶️  Resuming ${eventConfigs.length} events with ${staggerDelay}ms stagger...`);
+    console.log(
+      `▶️  Resuming ${eventConfigs.length} events with ${staggerDelay}ms stagger...`
+    );
 
     // Restart timers with staggering
     eventConfigs.forEach((config, index) => {
@@ -668,7 +734,7 @@ class EventManager {
 
     setTimeout(() => {
       console.log(`✅ All ${eventConfigs.length} events resumed`);
-    }, (staggerDelay * eventConfigs.length) + 3000);
+    }, staggerDelay * eventConfigs.length + 3000);
   }
 }
 
