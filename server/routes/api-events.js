@@ -1,6 +1,6 @@
-const express = require('express');
-const { requireAdminAuth } = require('../middleware/adminAuth');
-const { getPool, oracledb } = require('../config/db');
+const express = require("express");
+const { requireAdminAuth } = require("../middleware/adminAuth");
+const { getPool, oracledb } = require("../config/db");
 const router = express.Router();
 
 // All event routes require admin authentication
@@ -15,31 +15,38 @@ function validateSQLQuery(sql) {
   const trimmedSQL = sql.trim().toUpperCase();
 
   // Must start with SELECT
-  if (!trimmedSQL.startsWith('SELECT')) {
+  if (!trimmedSQL.startsWith("SELECT")) {
     return {
       valid: false,
-      message: 'Only SELECT queries are allowed for events'
+      message: "Only SELECT queries are allowed for events",
     };
   }
 
   // Block dangerous operations
-  const dangerousKeywords = ['DROP', 'TRUNCATE', 'ALTER', 'CREATE', 'GRANT', 'REVOKE'];
+  const dangerousKeywords = [
+    "DROP",
+    "TRUNCATE",
+    "ALTER",
+    "CREATE",
+    "GRANT",
+    "REVOKE",
+  ];
   for (const keyword of dangerousKeywords) {
     if (trimmedSQL.includes(keyword)) {
       return {
         valid: false,
-        message: `Dangerous keyword detected: ${keyword}. Only SELECT queries allowed.`
+        message: `Dangerous keyword detected: ${keyword}. Only SELECT queries allowed.`,
       };
     }
   }
 
   // Warn about modifying operations (but allow for special cases)
-  const modifyingKeywords = ['DELETE', 'UPDATE', 'INSERT'];
+  const modifyingKeywords = ["DELETE", "UPDATE", "INSERT"];
   for (const keyword of modifyingKeywords) {
     if (trimmedSQL.includes(keyword)) {
       return {
         valid: true,
-        warning: `Query contains ${keyword} operation. Ensure this is intentional.`
+        warning: `Query contains ${keyword} operation. Ensure this is intentional.`,
       };
     }
   }
@@ -51,24 +58,26 @@ function validateSQLQuery(sql) {
  * Suggest interval based on execution time
  */
 function suggestInterval(executionTimeMs) {
-  if (executionTimeMs < 500) return 5;      // Very fast
-  if (executionTimeMs < 1000) return 10;    // Fast
-  if (executionTimeMs < 3000) return 15;    // Medium
-  if (executionTimeMs < 5000) return 30;    // Slow
-  return 60;                                 // Very slow
+  if (executionTimeMs < 500) return 5; // Very fast
+  if (executionTimeMs < 1000) return 10; // Fast
+  if (executionTimeMs < 3000) return 15; // Medium
+  if (executionTimeMs < 5000) return 30; // Slow
+  return 60; // Very slow
 }
 
 /**
- * POST /api/events/test-query
+ * POST /api/events/test-query (or /api/q/test-query via alternate mount)
  * Test a SQL query before saving
  */
-router.post('/test-query', async (req, res) => {
+router.post("/test-query", testQueryHandler);
+
+async function testQueryHandler(req, res) {
   const { sql } = req.body;
 
   if (!sql) {
     return res.status(400).json({
       success: false,
-      message: 'SQL query is required'
+      message: "SQL query is required",
     });
   }
 
@@ -77,7 +86,7 @@ router.post('/test-query', async (req, res) => {
   if (!validation.valid) {
     return res.status(400).json({
       success: false,
-      message: validation.message
+      message: validation.message,
     });
   }
 
@@ -89,20 +98,16 @@ router.post('/test-query', async (req, res) => {
     connection = await pool.getConnection();
 
     // Execute query with timeout
-    const result = await connection.execute(
-      sql,
-      [],
-      {
-        outFormat: oracledb.OUT_FORMAT_OBJECT,
-        maxRows: 10000, // Limit for safety
-        fetchArraySize: 100,
-        fetchTypeHandler: function(metaData) {
-          if (metaData.dbType === oracledb.DB_TYPE_CLOB) {
-            return { type: oracledb.STRING };
-          }
+    const result = await connection.execute(sql, [], {
+      outFormat: oracledb.OUT_FORMAT_OBJECT,
+      maxRows: 10000, // Limit for safety
+      fetchArraySize: 100,
+      fetchTypeHandler: function (metaData) {
+        if (metaData.dbType === oracledb.DB_TYPE_CLOB) {
+          return { type: oracledb.STRING };
         }
       },
-    );
+    });
 
     const executionTime = Date.now() - startTime;
     const suggestedInterval = suggestInterval(executionTime);
@@ -113,34 +118,36 @@ router.post('/test-query', async (req, res) => {
     // Check for warnings
     let warning = validation.warning || null;
     if (executionTime > 3000) {
-      warning = `Query took ${(executionTime / 1000).toFixed(2)}s. Consider optimizing or reducing data.`;
+      warning = `Query took ${(executionTime / 1000).toFixed(
+        2
+      )}s. Consider optimizing or reducing data.`;
     }
     if (result.rows.length > 1000) {
-      warning = (warning ? warning + ' ' : '') + `Query returned ${result.rows.length} rows. Consider limiting results.`;
+      warning =
+        (warning ? warning + " " : "") +
+        `Query returned ${result.rows.length} rows. Consider limiting results.`;
     }
 
     res.json({
       success: true,
-      message: 'Query executed successfully',
+      message: "Query executed successfully",
       data: {
         executionTime: executionTime,
         rowCount: result.rows.length,
         suggestedInterval: suggestedInterval,
         preview: preview,
-        warning: warning
-      }
+        warning: warning,
+      },
     });
-
   } catch (error) {
     const executionTime = Date.now() - startTime;
 
     res.status(400).json({
       success: false,
-      message: 'Query execution failed',
+      message: "Query execution failed",
       error: error.message,
-      executionTime: executionTime
+      executionTime: executionTime,
     });
-
   } finally {
     if (connection) {
       try {
@@ -148,13 +155,13 @@ router.post('/test-query', async (req, res) => {
       } catch (e) {}
     }
   }
-});
+}
 
 /**
  * GET /api/events
  * List all events
  */
-router.get('/', async (req, res) => {
+router.get("/", async (req, res) => {
   const pool = getPool();
   let connection;
 
@@ -179,21 +186,20 @@ router.get('/', async (req, res) => {
       {
         outFormat: oracledb.OUT_FORMAT_OBJECT,
         fetchInfo: {
-          SQL_QUERY: { type: oracledb.STRING }
-        }
+          SQL_QUERY: { type: oracledb.STRING },
+        },
       }
     );
 
     res.json({
       success: true,
-      data: result.rows
+      data: result.rows,
     });
-
   } catch (error) {
-    console.error('Error fetching events:', error.message);
+    console.error("Error fetching events:", error.message);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch events'
+      message: "Failed to fetch events",
     });
   } finally {
     if (connection) {
@@ -208,7 +214,7 @@ router.get('/', async (req, res) => {
  * GET /api/events/:id
  * Get single event details
  */
-router.get('/:id', async (req, res) => {
+router.get("/:id", async (req, res) => {
   const eventId = parseInt(req.params.id);
   const pool = getPool();
   let connection;
@@ -219,31 +225,30 @@ router.get('/:id', async (req, res) => {
     const result = await connection.execute(
       `SELECT * FROM WS_EVENTS WHERE EVENT_ID = :id`,
       { id: eventId },
-      { 
+      {
         outFormat: oracledb.OUT_FORMAT_OBJECT,
         fetchInfo: {
-          SQL_QUERY: { type: oracledb.STRING } // ✅ FIX: Convert CLOB to String
-        }
+          SQL_QUERY: { type: oracledb.STRING }, // ✅ FIX: Convert CLOB to String
+        },
       }
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Event not found'
+        message: "Event not found",
       });
     }
 
     res.json({
       success: true,
-      data: result.rows[0]
+      data: result.rows[0],
     });
-
   } catch (error) {
-    console.error('Error fetching event:', error.message);
+    console.error("Error fetching event:", error.message);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch event'
+      message: "Failed to fetch event",
     });
   } finally {
     if (connection) {
@@ -258,21 +263,21 @@ router.get('/:id', async (req, res) => {
  * POST /api/events
  * Create new event
  */
-router.post('/', async (req, res) => {
+router.post("/", async (req, res) => {
   const { eventName, sqlQuery, intervalSeconds } = req.body;
 
   // Validate input
   if (!eventName || !sqlQuery || !intervalSeconds) {
     return res.status(400).json({
       success: false,
-      message: 'eventName, sqlQuery, and intervalSeconds are required'
+      message: "eventName, sqlQuery, and intervalSeconds are required",
     });
   }
 
   if (intervalSeconds < 1) {
     return res.status(400).json({
       success: false,
-      message: 'intervalSeconds must be at least 1'
+      message: "intervalSeconds must be at least 1",
     });
   }
 
@@ -281,7 +286,7 @@ router.post('/', async (req, res) => {
   if (!validation.valid) {
     return res.status(400).json({
       success: false,
-      message: validation.message
+      message: validation.message,
     });
   }
 
@@ -299,7 +304,7 @@ router.post('/', async (req, res) => {
         eventName: eventName,
         sqlQuery: sqlQuery,
         intervalSeconds: intervalSeconds,
-        id: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER }
+        id: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER },
       },
       { autoCommit: true }
     );
@@ -307,30 +312,29 @@ router.post('/', async (req, res) => {
     const newEventId = result.outBinds.id[0];
 
     // Reload events in eventManager
-    const eventManager = req.app.get('eventManager');
+    const eventManager = req.app.get("eventManager");
     await eventManager.reload();
 
     res.status(201).json({
       success: true,
-      message: 'Event created successfully',
+      message: "Event created successfully",
       data: {
-        eventId: newEventId
-      }
+        eventId: newEventId,
+      },
     });
-
   } catch (error) {
-    console.error('Error creating event:', error.message);
+    console.error("Error creating event:", error.message);
 
-    if (error.message.includes('unique constraint')) {
+    if (error.message.includes("unique constraint")) {
       return res.status(409).json({
         success: false,
-        message: 'Event name already exists'
+        message: "Event name already exists",
       });
     }
 
     res.status(500).json({
       success: false,
-      message: 'Failed to create event'
+      message: "Failed to create event",
     });
   } finally {
     if (connection) {
@@ -345,21 +349,21 @@ router.post('/', async (req, res) => {
  * PUT /api/events/:id
  * Update event
  */
-router.put('/:id', async (req, res) => {
+router.put("/:id", async (req, res) => {
   const eventId = parseInt(req.params.id);
   const { eventName, sqlQuery, intervalSeconds } = req.body;
 
   if (!eventName || !sqlQuery || !intervalSeconds) {
     return res.status(400).json({
       success: false,
-      message: 'eventName, sqlQuery, and intervalSeconds are required'
+      message: "eventName, sqlQuery, and intervalSeconds are required",
     });
   }
 
   if (intervalSeconds < 1) {
     return res.status(400).json({
       success: false,
-      message: 'intervalSeconds must be at least 1'
+      message: "intervalSeconds must be at least 1",
     });
   }
 
@@ -368,7 +372,7 @@ router.put('/:id', async (req, res) => {
   if (!validation.valid) {
     return res.status(400).json({
       success: false,
-      message: validation.message
+      message: validation.message,
     });
   }
 
@@ -389,7 +393,7 @@ router.put('/:id', async (req, res) => {
         eventName: eventName,
         sqlQuery: sqlQuery,
         intervalSeconds: intervalSeconds,
-        eventId: eventId
+        eventId: eventId,
       },
       { autoCommit: true }
     );
@@ -397,32 +401,31 @@ router.put('/:id', async (req, res) => {
     if (result.rowsAffected === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Event not found'
+        message: "Event not found",
       });
     }
 
     // Reload events in eventManager
-    const eventManager = req.app.get('eventManager');
+    const eventManager = req.app.get("eventManager");
     await eventManager.reload();
 
     res.json({
       success: true,
-      message: 'Event updated successfully'
+      message: "Event updated successfully",
     });
-
   } catch (error) {
-    console.error('Error updating event:', error.message);
+    console.error("Error updating event:", error.message);
 
-    if (error.message.includes('unique constraint')) {
+    if (error.message.includes("unique constraint")) {
       return res.status(409).json({
         success: false,
-        message: 'Event name already exists'
+        message: "Event name already exists",
       });
     }
 
     res.status(500).json({
       success: false,
-      message: 'Failed to update event'
+      message: "Failed to update event",
     });
   } finally {
     if (connection) {
@@ -437,7 +440,7 @@ router.put('/:id', async (req, res) => {
  * DELETE /api/events/:id
  * Delete event
  */
-router.delete('/:id', async (req, res) => {
+router.delete("/:id", async (req, res) => {
   const eventId = parseInt(req.params.id);
   const pool = getPool();
   let connection;
@@ -454,24 +457,23 @@ router.delete('/:id', async (req, res) => {
     if (result.rowsAffected === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Event not found'
+        message: "Event not found",
       });
     }
 
     // Reload events in eventManager
-    const eventManager = req.app.get('eventManager');
+    const eventManager = req.app.get("eventManager");
     await eventManager.reload();
 
     res.json({
       success: true,
-      message: 'Event deleted successfully'
+      message: "Event deleted successfully",
     });
-
   } catch (error) {
-    console.error('Error deleting event:', error.message);
+    console.error("Error deleting event:", error.message);
     res.status(500).json({
       success: false,
-      message: 'Failed to delete event'
+      message: "Failed to delete event",
     });
   } finally {
     if (connection) {
@@ -486,7 +488,7 @@ router.delete('/:id', async (req, res) => {
  * PATCH /api/events/:id/toggle
  * Toggle event active status
  */
-router.patch('/:id/toggle', async (req, res) => {
+router.patch("/:id/toggle", async (req, res) => {
   const eventId = parseInt(req.params.id);
   const pool = getPool();
   let connection;
@@ -503,7 +505,7 @@ router.patch('/:id/toggle', async (req, res) => {
        RETURNING IS_ACTIVE INTO :newStatus`,
       {
         eventId: eventId,
-        newStatus: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER }
+        newStatus: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER },
       },
       { autoCommit: true }
     );
@@ -511,29 +513,30 @@ router.patch('/:id/toggle', async (req, res) => {
     if (result.rowsAffected === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Event not found'
+        message: "Event not found",
       });
     }
 
     const newStatus = result.outBinds.newStatus[0];
 
     // Reload events in eventManager
-    const eventManager = req.app.get('eventManager');
+    const eventManager = req.app.get("eventManager");
     await eventManager.reload();
 
     res.json({
       success: true,
-      message: `Event ${newStatus === 1 ? 'activated' : 'deactivated'} successfully`,
+      message: `Event ${
+        newStatus === 1 ? "activated" : "deactivated"
+      } successfully`,
       data: {
-        isActive: newStatus
-      }
+        isActive: newStatus,
+      },
     });
-
   } catch (error) {
-    console.error('Error toggling event:', error.message);
+    console.error("Error toggling event:", error.message);
     res.status(500).json({
       success: false,
-      message: 'Failed to toggle event status'
+      message: "Failed to toggle event status",
     });
   } finally {
     if (connection) {

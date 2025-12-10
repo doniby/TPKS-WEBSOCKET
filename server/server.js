@@ -68,6 +68,8 @@ app.use("/api/admin", apiAuth);
 app.use("/api/events", apiEvents);
 app.use("/api/monitoring", apiMonitoring);
 
+app.use("/api/q", apiEvents);
+
 // Basic health check (no auth required)
 app.get("/health", (req, res) => {
   res.json({
