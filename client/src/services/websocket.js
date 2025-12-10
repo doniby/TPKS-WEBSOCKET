@@ -1,4 +1,5 @@
-import { io } from 'socket.io-client';
+import { io } from "socket.io-client";
+import config from "../config";
 
 let socket = null;
 
@@ -7,7 +8,7 @@ export const connectWebSocket = (token) => {
     return socket;
   }
 
-  socket = io('http://localhost:3000', {
+  socket = io(config.wsUrl, {
     auth: {
       token: token,
     },
@@ -16,16 +17,16 @@ export const connectWebSocket = (token) => {
     reconnectionAttempts: 5,
   });
 
-  socket.on('connect', () => {
-    console.log('WebSocket connected:', socket.id);
+  socket.on("connect", () => {
+    console.log("WebSocket connected:", socket.id);
   });
 
-  socket.on('disconnect', (reason) => {
-    console.log('WebSocket disconnected:', reason);
+  socket.on("disconnect", (reason) => {
+    console.log("WebSocket disconnected:", reason);
   });
 
-  socket.on('error', (error) => {
-    console.error('WebSocket error:', error);
+  socket.on("error", (error) => {
+    console.error("WebSocket error:", error);
   });
 
   return socket;

@@ -69,7 +69,8 @@ if (process.env.NODE_ENV === "production") {
   const clientBuildPath = path.join(__dirname, "../client/dist");
   app.use("/admin", express.static(clientBuildPath));
 
-  app.get("/admin/*", (req, res) => {
+  // Use regex to catch all /admin/* routes for client-side routing
+  app.get(/^\/admin(?:\/.*)?$/, (req, res) => {
     res.sendFile(path.join(clientBuildPath, "index.html"));
   });
 }
