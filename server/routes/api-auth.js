@@ -84,15 +84,27 @@ router.get(
 
 /**
  * POST /api/admin/run
- * Run a SQL query (same as test-query, but under /admin/ path to bypass DPI)
+ * Execute a SQL query for testing
+ * Body: { q: "base64_encoded_sql" }
  */
 router.post("/run", requireAdminAuth, async (req, res) => {
-  const { sql } = req.body;
+  const { q } = req.body;
 
-  if (!sql) {
+  if (!q) {
     return res.status(400).json({
       success: false,
-      message: "SQL query is required",
+      message: "Query parameter (q) is required",
+    });
+  }
+
+  // Decode base64
+  let sql;
+  try {
+    sql = Buffer.from(q, "base64").toString("utf-8");
+  } catch (e) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid base64 encoding",
     });
   }
 

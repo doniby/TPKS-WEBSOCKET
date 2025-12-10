@@ -66,7 +66,7 @@ function suggestInterval(executionTimeMs) {
 }
 
 /**
- * POST /api/events/test-query (or /api/q/test-query via alternate mount)
+ * POST /api/events/test-query
  * Test a SQL query before saving
  */
 router.post("/test-query", testQueryHandler);

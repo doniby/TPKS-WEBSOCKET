@@ -55,7 +55,7 @@ export const eventsAPI = {
 
   toggle: (id) => api.patch(`/events/${id}/toggle`),
 
-  testQuery: (sql) => api.post("/admin/run", { sql }),
+  testQuery: (sql) => api.post("/admin/run", { q: btoa(sql) }),
 };
 
 // --- MONITORING ---
