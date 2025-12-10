@@ -68,9 +68,6 @@ app.use("/api/admin", apiAuth);
 app.use("/api/events", apiEvents);
 app.use("/api/monitoring", apiMonitoring);
 
-// Alternate route for events API (bypasses DPI that blocks POST to non-admin paths)
-app.use("/api/admin/q", apiEvents);
-
 // Basic health check (no auth required)
 app.get("/health", (req, res) => {
   res.json({

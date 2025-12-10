@@ -1,5 +1,10 @@
-const express = require('express');
-const { verifyAdminCredentials, generateAdminToken } = require('../middleware/adminAuth');
+const express = require("express");
+const {
+  verifyAdminCredentials,
+  generateAdminToken,
+  requireAdminAuth,
+} = require("../middleware/adminAuth");
+const { getPool, oracledb } = require("../config/db");
 const router = express.Router();
 
 /**
@@ -11,7 +16,7 @@ const router = express.Router();
  * POST /api/admin/login
  * Login with username and password
  */
-router.post('/login', async (req, res) => {
+router.post("/login", async (req, res) => {
   try {
     const { username, password } = req.body;
 
@@ -19,7 +24,7 @@ router.post('/login', async (req, res) => {
     if (!username || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Username and password are required'
+        message: "Username and password are required",
       });
     }
 
@@ -28,11 +33,11 @@ router.post('/login', async (req, res) => {
 
     if (!isValid) {
       // Add delay to prevent brute force attacks
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       return res.status(401).json({
         success: false,
-        message: 'Invalid username or password'
+        message: "Invalid username or password",
       });
     }
 
@@ -41,20 +46,19 @@ router.post('/login', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Login successful',
+      message: "Login successful",
       data: {
         token: token,
         username: username,
-        role: 'admin',
-        expiresIn: '24h'
-      }
+        role: "admin",
+        expiresIn: "24h",
+      },
     });
-
   } catch (error) {
-    console.error('Login error:', error.message);
+    console.error("Login error:", error.message);
     res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: "Internal server error",
     });
   }
 });
@@ -63,15 +67,86 @@ router.post('/login', async (req, res) => {
  * GET /api/admin/verify
  * Verify if current token is valid
  */
-router.get('/verify', require('../middleware/adminAuth').requireAdminAuth, (req, res) => {
-  res.json({
-    success: true,
-    message: 'Token is valid',
-    data: {
-      username: req.admin.username,
-      role: req.admin.role
+router.get(
+  "/verify",
+  require("../middleware/adminAuth").requireAdminAuth,
+  (req, res) => {
+    res.json({
+      success: true,
+      message: "Token is valid",
+      data: {
+        username: req.admin.username,
+        role: req.admin.role,
+      },
+    });
+  }
+);
+
+/**
+ * POST /api/admin/run
+ * Run a SQL query (same as test-query, but under /admin/ path to bypass DPI)
+ */
+router.post("/run", requireAdminAuth, async (req, res) => {
+  const { sql } = req.body;
+
+  if (!sql) {
+    return res.status(400).json({
+      success: false,
+      message: "SQL query is required",
+    });
+  }
+
+  // Validate SQL - must start with SELECT
+  const trimmedSQL = sql.trim().toUpperCase();
+  if (!trimmedSQL.startsWith("SELECT")) {
+    return res.status(400).json({
+      success: false,
+      message: "Only SELECT queries are allowed",
+    });
+  }
+
+  const pool = getPool();
+  let connection;
+  const startTime = Date.now();
+
+  try {
+    connection = await pool.getConnection();
+
+    const result = await connection.execute(sql, [], {
+      outFormat: oracledb.OUT_FORMAT_OBJECT,
+      maxRows: 10000,
+      fetchArraySize: 100,
+    });
+
+    const executionTime = Date.now() - startTime;
+    const preview = result.rows.slice(0, 5);
+
+    res.json({
+      success: true,
+      message: "Query executed successfully",
+      data: {
+        executionTime: executionTime,
+        rowCount: result.rows.length,
+        suggestedInterval:
+          executionTime < 500 ? 5 : executionTime < 1000 ? 10 : 15,
+        preview: preview,
+      },
+    });
+  } catch (error) {
+    const executionTime = Date.now() - startTime;
+    res.status(400).json({
+      success: false,
+      message: "Query execution failed",
+      error: error.message,
+      executionTime: executionTime,
+    });
+  } finally {
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (e) {}
     }
-  });
+  }
 });
 
 module.exports = router;
