@@ -161,4 +161,268 @@ router.post("/run", requireAdminAuth, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/admin/events
+ * List all events
+ */
+router.get("/events", requireAdminAuth, async (req, res) => {
+  const pool = getPool();
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute(
+      `SELECT EVENT_ID, EVENT_NAME, SQL_QUERY, INTERVAL_SECONDS, IS_ACTIVE,
+              LAST_EXECUTION_TIME, LAST_EXECUTION_STATUS, LAST_EXECUTION_TIMESTAMP,
+              CREATED_AT, UPDATED_AT
+       FROM WS_EVENTS ORDER BY EVENT_ID DESC`,
+      [],
+      {
+        outFormat: oracledb.OUT_FORMAT_OBJECT,
+        fetchInfo: { SQL_QUERY: { type: oracledb.STRING } },
+      }
+    );
+    res.json({ success: true, data: result.rows });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to fetch events" });
+  } finally {
+    if (connection)
+      try {
+        await connection.close();
+      } catch (e) {}
+  }
+});
+
+/**
+ * GET /api/admin/events/:id
+ * Get single event
+ */
+router.get("/events/:id", requireAdminAuth, async (req, res) => {
+  const eventId = parseInt(req.params.id);
+  const pool = getPool();
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute(
+      `SELECT * FROM WS_EVENTS WHERE EVENT_ID = :id`,
+      { id: eventId },
+      {
+        outFormat: oracledb.OUT_FORMAT_OBJECT,
+        fetchInfo: { SQL_QUERY: { type: oracledb.STRING } },
+      }
+    );
+    if (result.rows.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Event not found" });
+    }
+    res.json({ success: true, data: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to fetch event" });
+  } finally {
+    if (connection)
+      try {
+        await connection.close();
+      } catch (e) {}
+  }
+});
+
+/**
+ * POST /api/admin/events
+ * Create new event
+ */
+router.post("/events", requireAdminAuth, async (req, res) => {
+  const { eventName, q, intervalSeconds } = req.body;
+
+  if (!eventName || !q || !intervalSeconds) {
+    return res.status(400).json({
+      success: false,
+      message: "eventName, q (base64 SQL), and intervalSeconds are required",
+    });
+  }
+
+  let sqlQuery;
+  try {
+    sqlQuery = Buffer.from(q, "base64").toString("utf-8");
+  } catch (e) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Invalid base64 encoding" });
+  }
+
+  const pool = getPool();
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute(
+      `INSERT INTO WS_EVENTS (EVENT_NAME, SQL_QUERY, INTERVAL_SECONDS, IS_ACTIVE)
+       VALUES (:eventName, :sqlQuery, :intervalSeconds, 1)
+       RETURNING EVENT_ID INTO :id`,
+      {
+        eventName,
+        sqlQuery,
+        intervalSeconds,
+        id: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER },
+      },
+      { autoCommit: true }
+    );
+    const eventManager = req.app.get("eventManager");
+    await eventManager.reload();
+    res.status(201).json({
+      success: true,
+      message: "Event created",
+      data: { eventId: result.outBinds.id[0] },
+    });
+  } catch (error) {
+    if (error.message.includes("unique constraint")) {
+      return res
+        .status(409)
+        .json({ success: false, message: "Event name already exists" });
+    }
+    res.status(500).json({ success: false, message: "Failed to create event" });
+  } finally {
+    if (connection)
+      try {
+        await connection.close();
+      } catch (e) {}
+  }
+});
+
+/**
+ * PUT /api/admin/events/:id
+ * Update event
+ */
+router.put("/events/:id", requireAdminAuth, async (req, res) => {
+  const eventId = parseInt(req.params.id);
+  const { eventName, q, intervalSeconds } = req.body;
+
+  if (!eventName || !q || !intervalSeconds) {
+    return res.status(400).json({
+      success: false,
+      message: "eventName, q (base64 SQL), and intervalSeconds are required",
+    });
+  }
+
+  let sqlQuery;
+  try {
+    sqlQuery = Buffer.from(q, "base64").toString("utf-8");
+  } catch (e) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Invalid base64 encoding" });
+  }
+
+  const pool = getPool();
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute(
+      `UPDATE WS_EVENTS SET EVENT_NAME = :eventName, SQL_QUERY = :sqlQuery,
+       INTERVAL_SECONDS = :intervalSeconds, UPDATED_AT = CURRENT_TIMESTAMP
+       WHERE EVENT_ID = :eventId`,
+      { eventName, sqlQuery, intervalSeconds, eventId },
+      { autoCommit: true }
+    );
+    if (result.rowsAffected === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Event not found" });
+    }
+    const eventManager = req.app.get("eventManager");
+    await eventManager.reload();
+    res.json({ success: true, message: "Event updated" });
+  } catch (error) {
+    if (error.message.includes("unique constraint")) {
+      return res
+        .status(409)
+        .json({ success: false, message: "Event name already exists" });
+    }
+    res.status(500).json({ success: false, message: "Failed to update event" });
+  } finally {
+    if (connection)
+      try {
+        await connection.close();
+      } catch (e) {}
+  }
+});
+
+/**
+ * DELETE /api/admin/events/:id
+ * Delete event
+ */
+router.delete("/events/:id", requireAdminAuth, async (req, res) => {
+  const eventId = parseInt(req.params.id);
+  const pool = getPool();
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute(
+      `DELETE FROM WS_EVENTS WHERE EVENT_ID = :eventId`,
+      { eventId },
+      { autoCommit: true }
+    );
+    if (result.rowsAffected === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Event not found" });
+    }
+    const eventManager = req.app.get("eventManager");
+    await eventManager.reload();
+    res.json({ success: true, message: "Event deleted" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to delete event" });
+  } finally {
+    if (connection)
+      try {
+        await connection.close();
+      } catch (e) {}
+  }
+});
+
+/**
+ * PATCH /api/admin/events/:id/toggle
+ * Toggle event active status
+ */
+router.patch("/events/:id/toggle", requireAdminAuth, async (req, res) => {
+  const eventId = parseInt(req.params.id);
+  const pool = getPool();
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute(
+      `UPDATE WS_EVENTS SET IS_ACTIVE = CASE WHEN IS_ACTIVE = 1 THEN 0 ELSE 1 END,
+       UPDATED_AT = CURRENT_TIMESTAMP WHERE EVENT_ID = :eventId
+       RETURNING IS_ACTIVE INTO :newStatus`,
+      { eventId, newStatus: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER } },
+      { autoCommit: true }
+    );
+    if (result.rowsAffected === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Event not found" });
+    }
+    const eventManager = req.app.get("eventManager");
+    await eventManager.reload();
+    res.json({
+      success: true,
+      message: `Event ${
+        result.outBinds.newStatus[0] === 1 ? "activated" : "deactivated"
+      }`,
+      data: { isActive: result.outBinds.newStatus[0] },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to toggle event" });
+  } finally {
+    if (connection)
+      try {
+        await connection.close();
+      } catch (e) {}
+  }
+});
+
 module.exports = router;

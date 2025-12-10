@@ -43,17 +43,27 @@ export const authAPI = {
 
 // --- EVENTS ---
 export const eventsAPI = {
-  getAll: () => api.get("/events"),
+  getAll: () => api.get("/admin/events"),
 
-  getById: (id) => api.get(`/events/${id}`),
+  getById: (id) => api.get(`/admin/events/${id}`),
 
-  create: (data) => api.post("/events", data),
+  create: (data) =>
+    api.post("/admin/events", {
+      eventName: data.eventName,
+      q: btoa(data.sqlQuery),
+      intervalSeconds: data.intervalSeconds,
+    }),
 
-  update: (id, data) => api.put(`/events/${id}`, data),
+  update: (id, data) =>
+    api.put(`/admin/events/${id}`, {
+      eventName: data.eventName,
+      q: btoa(data.sqlQuery),
+      intervalSeconds: data.intervalSeconds,
+    }),
 
-  delete: (id) => api.delete(`/events/${id}`),
+  delete: (id) => api.delete(`/admin/events/${id}`),
 
-  toggle: (id) => api.patch(`/events/${id}/toggle`),
+  toggle: (id) => api.patch(`/admin/events/${id}/toggle`),
 
   testQuery: (sql) => api.post("/admin/run", { q: btoa(sql) }),
 };
