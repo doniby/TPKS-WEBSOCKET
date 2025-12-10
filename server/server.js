@@ -18,7 +18,15 @@ const apiMonitoring = require("./routes/api-monitoring");
 const app = express();
 
 // --- MIDDLEWARE ---
-app.use(helmet()); // Security headers
+// Helmet security headers - configure for non-HTTPS environment
+app.use(
+  helmet({
+    contentSecurityPolicy: false, // Disable CSP (can cause asset loading issues)
+    hsts: false, // Disable HSTS (forces HTTPS)
+    crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: false,
+  })
+);
 app.disable("x-powered-by");
 
 // Parse JSON bodies
@@ -32,7 +40,12 @@ app.use((req, res, next) => {
     : ["http://localhost:3000", "http://localhost:5173"];
 
   const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
+
+  const host = req.headers.host;
+  const isSameOrigin =
+    origin && (origin === `http://${host}` || origin === `https://${host}`);
+
+  if (allowedOrigins.includes(origin) || isSameOrigin) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }
 
@@ -276,7 +289,8 @@ async function startApp() {
 
     // 3. Start server
     const PORT = process.env.PORT || 3000;
-    server.listen(PORT, () => {
+    const HOST = process.env.HOST || "0.0.0.0"; // Bind to all interfaces
+    server.listen(PORT, HOST, () => {
       console.log(`\n${"=".repeat(60)}`);
       console.log(`🚀 TPKS Dashboard WebSocket Server`);
       console.log(`${"=".repeat(60)}`);
