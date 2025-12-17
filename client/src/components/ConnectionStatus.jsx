@@ -1,48 +1,19 @@
 import { useState, useEffect } from "react";
-import { getSocket } from "../services/websocket";
 import { monitoringAPI } from "../services/api";
 
 const ConnectionStatus = () => {
-  const [status, setStatus] = useState("disconnected");
   const [clients, setClients] = useState(0);
-  const [isBlinking, setIsBlinking] = useState(false);
+  const [status, setStatus] = useState("loading");
 
   useEffect(() => {
-    const socket = getSocket();
-
-    const updateStatus = () => {
-      if (socket && socket.connected) {
-        setStatus("connected");
-      } else {
-        setStatus("disconnected");
-      }
-    };
-
-    if (socket) {
-      socket.on("connect", () => {
-        setStatus("connected");
-        setIsBlinking(true);
-        setTimeout(() => setIsBlinking(false), 2000);
-      });
-
-      socket.on("disconnect", () => {
-        setStatus("disconnected");
-      });
-
-      socket.on("connect_error", () => {
-        setStatus("error");
-      });
-
-      updateStatus();
-    }
-
     // Fetch client count periodically
     const fetchClientCount = async () => {
       try {
         const response = await monitoringAPI.getStats();
         setClients(response.data.data.websocket.connectedClients);
+        setStatus("connected");
       } catch (err) {
-        // Silently fail
+        setStatus("error");
       }
     };
 
@@ -50,11 +21,6 @@ const ConnectionStatus = () => {
     const interval = setInterval(fetchClientCount, 5000);
 
     return () => {
-      if (socket) {
-        socket.off("connect");
-        socket.off("disconnect");
-        socket.off("connect_error");
-      }
       clearInterval(interval);
     };
   }, []);
@@ -63,19 +29,19 @@ const ConnectionStatus = () => {
     connected: {
       color: "#4caf50",
       bgColor: "rgba(76, 175, 80, 0.1)",
-      text: "Connected",
+      text: "Server Online",
       icon: "●",
     },
-    disconnected: {
-      color: "#f44336",
-      bgColor: "rgba(244, 67, 54, 0.1)",
-      text: "Disconnected",
+    loading: {
+      color: "#ff9800",
+      bgColor: "rgba(255, 152, 0, 0.1)",
+      text: "Connecting...",
       icon: "●",
     },
     error: {
-      color: "#ff9800",
-      bgColor: "rgba(255, 152, 0, 0.1)",
-      text: "Connection Error",
+      color: "#f44336",
+      bgColor: "rgba(244, 67, 54, 0.1)",
+      text: "Server Offline",
       icon: "●",
     },
   };
@@ -95,11 +61,7 @@ const ConnectionStatus = () => {
           style={{
             ...styles.indicator,
             background: config.color,
-            animation: isBlinking
-              ? "blink 0.5s ease 4"
-              : status === "connected"
-              ? "pulse 2s infinite"
-              : "none",
+            animation: status === "connected" ? "pulse 2s infinite" : "none",
           }}
         >
           {config.icon}
@@ -168,10 +130,6 @@ if (
     @keyframes pulse {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.6; }
-    }
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.2; }
     }
   `;
   document.head.appendChild(style);

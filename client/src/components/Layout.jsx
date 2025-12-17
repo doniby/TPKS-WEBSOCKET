@@ -18,7 +18,7 @@ const Layout = ({ children }) => {
     <div style={styles.container}>
       <div style={styles.sidebar}>
         <div style={styles.logo}>
-          <h2 style={styles.logoText}>TPKS Dashboard</h2>
+          <h2 style={styles.logoText}>WEBSOCKET MONITORING</h2>
           <p style={styles.logoSubtext}>Admin Panel</p>
         </div>
 
@@ -35,15 +35,6 @@ const Layout = ({ children }) => {
             }}
           >
             📊 Dashboard
-          </Link>
-          <Link
-            to="/broadcasts"
-            style={{
-              ...styles.navLink,
-              ...(isActive("/broadcasts") ? styles.navLinkActive : {}),
-            }}
-          >
-            🔴 Live Broadcasts
           </Link>
           <Link
             to="/events"

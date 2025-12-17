@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { monitoringAPI } from '../services/api';
-import Layout from '../components/Layout';
+import { useState, useEffect } from "react";
+import { monitoringAPI } from "../services/api";
+import Layout from "../components/Layout";
 
 const Dashboard = () => {
   const [stats, setStats] = useState(null);
@@ -19,7 +19,7 @@ const Dashboard = () => {
       setStats(response.data.data);
       setError(null);
     } catch (err) {
-      setError('Failed to fetch stats');
+      setError("Failed to fetch stats");
     } finally {
       setLoading(false);
     }
@@ -41,10 +41,6 @@ const Dashboard = () => {
     );
   }
 
-  const formatBytes = (bytes) => {
-    return (bytes / 1024 / 1024).toFixed(2) + ' MB';
-  };
-
   const formatUptime = (seconds) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -59,7 +55,9 @@ const Dashboard = () => {
         <div style={styles.card}>
           <div style={styles.cardIcon}>🔌</div>
           <div style={styles.cardTitle}>WebSocket Connections</div>
-          <div style={styles.cardValue}>{stats?.websocket.connectedClients || 0}</div>
+          <div style={styles.cardValue}>
+            {stats?.websocket.connectedClients || 0}
+          </div>
           <div style={styles.cardSubtext}>Active clients</div>
         </div>
 
@@ -74,7 +72,8 @@ const Dashboard = () => {
           <div style={styles.cardIcon}>💾</div>
           <div style={styles.cardTitle}>Database Connections</div>
           <div style={styles.cardValue}>
-            {stats?.database.connectionsInUse || 0}/{stats?.database.poolMax || 0}
+            {stats?.database.connectionsInUse || 0}/
+            {stats?.database.poolMax || 0}
           </div>
           <div style={styles.cardSubtext}>Pool usage</div>
         </div>
@@ -90,12 +89,52 @@ const Dashboard = () => {
       </div>
 
       <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>System Information</h2>
+        <h2 style={styles.sectionTitle}>Memory Breakdown</h2>
         <div style={styles.infoCard}>
           <div style={styles.infoRow}>
-            <span>Memory Usage (Heap):</span>
-            <strong>{formatBytes(stats?.system.memoryUsage.heapUsed || 0)} / {formatBytes(stats?.system.memoryUsage.heapTotal || 0)}</strong>
+            <span>📊 Total Memory (RSS):</span>
+            <strong style={styles.highlight}>
+              {stats?.system.memoryBreakdownMB?.total || "0"} MB
+            </strong>
           </div>
+          <div style={styles.memoryBar}>
+            <div
+              style={{
+                ...styles.memoryBarFill,
+                width: "100%",
+                background: "#e0e0e0",
+              }}
+            ></div>
+          </div>
+
+          <div style={{ ...styles.infoRow, paddingLeft: "20px" }}>
+            <span>🔷 Heap Used:</span>
+            <strong>
+              {stats?.system.memoryBreakdownMB?.heapUsed || "0"} MB
+            </strong>
+          </div>
+          <div style={{ ...styles.infoRow, paddingLeft: "20px" }}>
+            <span>🔶 External (Oracle driver):</span>
+            <strong>
+              {stats?.system.memoryBreakdownMB?.external || "0"} MB
+            </strong>
+          </div>
+          <div style={{ ...styles.infoRow, paddingLeft: "20px" }}>
+            <span>🔵 ArrayBuffers:</span>
+            <strong>
+              {stats?.system.memoryBreakdownMB?.arrayBuffers || "0"} MB
+            </strong>
+          </div>
+          <div style={{ ...styles.infoRow, paddingLeft: "20px" }}>
+            <span>⬜ Other (Code, Stack, Libs):</span>
+            <strong>{stats?.system.memoryBreakdownMB?.other || "0"} MB</strong>
+          </div>
+        </div>
+      </div>
+
+      <div style={styles.section}>
+        <h2 style={styles.sectionTitle}>System Information</h2>
+        <div style={styles.infoCard}>
           <div style={styles.infoRow}>
             <span>Node Version:</span>
             <strong>{stats?.system.nodeVersion}</strong>
@@ -115,7 +154,7 @@ const Dashboard = () => {
         <div style={styles.section}>
           <h2 style={styles.sectionTitle}>Event Status</h2>
           <div style={styles.table}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={styles.tableHeader}>
                   <th style={styles.th}>Event Name</th>
@@ -132,25 +171,31 @@ const Dashboard = () => {
                     <td style={styles.td}>{event.eventName}</td>
                     <td style={styles.td}>{event.intervalSeconds}s</td>
                     <td style={styles.td}>
-                      <span style={{
-                        ...styles.badge,
-                        ...(event.isRunning ? styles.badgeRunning : styles.badgeIdle)
-                      }}>
-                        {event.isRunning ? 'Running' : 'Idle'}
+                      <span
+                        style={{
+                          ...styles.badge,
+                          ...(event.isRunning
+                            ? styles.badgeRunning
+                            : styles.badgeIdle),
+                        }}
+                      >
+                        {event.isRunning ? "Running" : "Idle"}
                       </span>
                     </td>
                     <td style={styles.td}>{event.stats.totalExecutions}</td>
                     <td style={styles.td}>
                       {event.stats.totalExecutions > 0
-                        ? ((event.stats.successCount / event.stats.totalExecutions) * 100).toFixed(1) + '%'
-                        : 'N/A'
-                      }
+                        ? (
+                            (event.stats.successCount /
+                              event.stats.totalExecutions) *
+                            100
+                          ).toFixed(1) + "%"
+                        : "N/A"}
                     </td>
                     <td style={styles.td}>
                       {event.stats.lastExecutionTime
-                        ? event.stats.lastExecutionTime + 'ms'
-                        : 'N/A'
-                      }
+                        ? event.stats.lastExecutionTime + "ms"
+                        : "N/A"}
                     </td>
                   </tr>
                 ))}
@@ -165,115 +210,131 @@ const Dashboard = () => {
 
 const styles = {
   loading: {
-    padding: '40px',
-    textAlign: 'center',
-    fontSize: '18px',
-    color: '#666',
+    padding: "40px",
+    textAlign: "center",
+    fontSize: "18px",
+    color: "#666",
   },
   error: {
-    padding: '20px',
-    background: '#fee',
-    border: '1px solid #fcc',
-    borderRadius: '8px',
-    color: '#c33',
+    padding: "20px",
+    background: "#fee",
+    border: "1px solid #fcc",
+    borderRadius: "8px",
+    color: "#c33",
   },
   title: {
-    fontSize: '32px',
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: '30px',
+    fontSize: "32px",
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: "30px",
   },
   grid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-    gap: '20px',
-    marginBottom: '40px',
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+    gap: "20px",
+    marginBottom: "40px",
   },
   card: {
-    background: 'white',
-    borderRadius: '12px',
-    padding: '25px',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+    background: "white",
+    borderRadius: "12px",
+    padding: "25px",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
   },
   cardIcon: {
-    fontSize: '32px',
-    marginBottom: '10px',
+    fontSize: "32px",
+    marginBottom: "10px",
   },
   cardTitle: {
-    fontSize: '14px',
-    color: '#666',
-    marginBottom: '10px',
+    fontSize: "14px",
+    color: "#666",
+    marginBottom: "10px",
   },
   cardValue: {
-    fontSize: '32px',
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: '5px',
+    fontSize: "32px",
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: "5px",
   },
   cardSubtext: {
-    fontSize: '13px',
-    color: '#999',
+    fontSize: "13px",
+    color: "#999",
   },
   section: {
-    marginBottom: '40px',
+    marginBottom: "40px",
   },
   sectionTitle: {
-    fontSize: '22px',
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: '20px',
+    fontSize: "22px",
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: "20px",
   },
   infoCard: {
-    background: 'white',
-    borderRadius: '12px',
-    padding: '20px',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+    background: "white",
+    borderRadius: "12px",
+    padding: "20px",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
   },
   infoRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    padding: '12px 0',
-    borderBottom: '1px solid #f0f0f0',
-    fontSize: '15px',
+    display: "flex",
+    justifyContent: "space-between",
+    padding: "12px 0",
+    borderBottom: "1px solid #f0f0f0",
+    fontSize: "15px",
   },
   table: {
-    background: 'white',
-    borderRadius: '12px',
-    padding: '20px',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-    overflow: 'auto',
+    background: "white",
+    borderRadius: "12px",
+    padding: "20px",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+    overflow: "auto",
   },
   tableHeader: {
-    background: '#f8f9fa',
+    background: "#f8f9fa",
   },
   th: {
-    padding: '12px',
-    textAlign: 'left',
-    fontWeight: '600',
-    color: '#333',
-    fontSize: '14px',
+    padding: "12px",
+    textAlign: "left",
+    fontWeight: "600",
+    color: "#333",
+    fontSize: "14px",
   },
   tableRow: {
-    borderBottom: '1px solid #f0f0f0',
+    borderBottom: "1px solid #f0f0f0",
   },
   td: {
-    padding: '12px',
-    fontSize: '14px',
-    color: '#666',
+    padding: "12px",
+    fontSize: "14px",
+    color: "#666",
   },
   badge: {
-    padding: '4px 12px',
-    borderRadius: '12px',
-    fontSize: '12px',
-    fontWeight: '500',
+    padding: "4px 12px",
+    borderRadius: "12px",
+    fontSize: "12px",
+    fontWeight: "500",
   },
   badgeRunning: {
-    background: '#e8f5e9',
-    color: '#2e7d32',
+    background: "#e8f5e9",
+    color: "#2e7d32",
   },
   badgeIdle: {
-    background: '#f5f5f5',
-    color: '#666',
+    background: "#f5f5f5",
+    color: "#666",
+  },
+  highlight: {
+    color: "#667eea",
+    fontSize: "18px",
+  },
+  memoryBar: {
+    height: "8px",
+    background: "#f0f0f0",
+    borderRadius: "4px",
+    marginBottom: "10px",
+    overflow: "hidden",
+  },
+  memoryBarFill: {
+    height: "100%",
+    borderRadius: "4px",
+    transition: "width 0.3s ease",
   },
 };
 

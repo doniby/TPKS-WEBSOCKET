@@ -6,7 +6,6 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Events from "./pages/Events";
 import Monitoring from "./pages/Monitoring";
-import BroadcastViewer from "./pages/BroadcastViewer";
 
 // Protected route wrapper
 const ProtectedRoute = ({ children }) => {
@@ -72,14 +71,6 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Monitoring />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/broadcasts"
-        element={
-          <ProtectedRoute>
-            <BroadcastViewer />
           </ProtectedRoute>
         }
       />

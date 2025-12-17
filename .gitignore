@@ -32,3 +32,4 @@ client/build/
 # Temp files
 *.tmp
 *.temp
+/nbproject/private/
