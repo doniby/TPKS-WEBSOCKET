@@ -54,6 +54,15 @@ const Layout = ({ children }) => {
           >
             📈 Monitoring
           </Link>
+          <Link
+            to="/settings"
+            style={{
+              ...styles.navLink,
+              ...(isActive("/settings") ? styles.navLinkActive : {}),
+            }}
+          >
+            🔧 Settings
+          </Link>
         </nav>
 
         <div style={styles.user}>

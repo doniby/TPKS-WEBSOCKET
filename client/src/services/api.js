@@ -79,4 +79,12 @@ export const monitoringAPI = {
   getHealth: () => axios.get("/health"),
 };
 
+// --- ORIGINS ---
+export const originsAPI = {
+  getAll: () => api.get("/admin/origins"),
+  add: (origin) => api.post("/admin/origins", { origin }),
+  remove: (origin) =>
+    api.delete(`/admin/origins/${encodeURIComponent(origin)}`),
+};
+
 export default api;

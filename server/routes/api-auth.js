@@ -1,4 +1,6 @@
 const express = require("express");
+const fs = require("fs");
+const path = require("path");
 const {
   verifyAdminCredentials,
   generateAdminToken,
@@ -6,6 +8,9 @@ const {
 } = require("../middleware/adminAuth");
 const { getPool, oracledb } = require("../config/db");
 const router = express.Router();
+
+// Path to .env file
+const ENV_PATH = path.join(__dirname, "../../.env");
 
 /**
  * Admin Authentication Routes
@@ -422,6 +427,190 @@ router.patch("/events/:id/toggle", requireAdminAuth, async (req, res) => {
       try {
         await connection.close();
       } catch (e) {}
+  }
+});
+
+// ==========================================
+// ALLOWED ORIGINS MANAGEMENT
+// ==========================================
+
+/**
+ * Helper: Read .env file and parse ALLOWED_ORIGINS
+ */
+function readAllowedOrigins() {
+  try {
+    if (!fs.existsSync(ENV_PATH)) {
+      return [];
+    }
+    const envContent = fs.readFileSync(ENV_PATH, "utf-8");
+    const match = envContent.match(/^ALLOWED_ORIGINS=(.*)$/m);
+    if (match && match[1]) {
+      return match[1]
+        .split(",")
+        .map((o) => o.trim())
+        .filter(Boolean);
+    }
+    return [];
+  } catch (error) {
+    console.error("Error reading .env:", error.message);
+    return [];
+  }
+}
+
+/**
+ * Helper: Write ALLOWED_ORIGINS to .env file
+ */
+function writeAllowedOrigins(origins) {
+  try {
+    let envContent = "";
+    if (fs.existsSync(ENV_PATH)) {
+      envContent = fs.readFileSync(ENV_PATH, "utf-8");
+    }
+
+    const newValue = `ALLOWED_ORIGINS=${origins.join(",")}`;
+
+    if (envContent.match(/^ALLOWED_ORIGINS=.*$/m)) {
+      // Replace existing
+      envContent = envContent.replace(/^ALLOWED_ORIGINS=.*$/m, newValue);
+    } else {
+      // Add new line
+      envContent = envContent.trim() + "\n" + newValue + "\n";
+    }
+
+    fs.writeFileSync(ENV_PATH, envContent, "utf-8");
+    return true;
+  } catch (error) {
+    console.error("Error writing .env:", error.message);
+    return false;
+  }
+}
+
+/**
+ * GET /api/admin/origins
+ * Get all allowed origins
+ */
+router.get("/origins", requireAdminAuth, (req, res) => {
+  try {
+    const origins = readAllowedOrigins();
+    res.json({
+      success: true,
+      data: origins,
+      message: "Origins loaded from .env file",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to read origins",
+    });
+  }
+});
+
+/**
+ * POST /api/admin/origins
+ * Add a new allowed origin
+ */
+router.post("/origins", requireAdminAuth, (req, res) => {
+  try {
+    const { origin } = req.body;
+
+    if (!origin || typeof origin !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Origin is required",
+      });
+    }
+
+    const trimmedOrigin = origin.trim();
+
+    // Basic URL validation
+    try {
+      new URL(trimmedOrigin);
+    } catch {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid URL format. Example: https://example.com",
+      });
+    }
+
+    const origins = readAllowedOrigins();
+
+    // Check for duplicates
+    if (origins.includes(trimmedOrigin)) {
+      return res.status(409).json({
+        success: false,
+        message: "Origin already exists",
+      });
+    }
+
+    origins.push(trimmedOrigin);
+
+    if (!writeAllowedOrigins(origins)) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to save origins to .env file",
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Origin added. Restart server to apply changes.",
+      data: origins,
+    });
+  } catch (error) {
+    console.error("Error adding origin:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Failed to add origin",
+    });
+  }
+});
+
+/**
+ * DELETE /api/admin/origins/:origin
+ * Remove an allowed origin (URL-encoded)
+ */
+router.delete("/origins/:origin", requireAdminAuth, (req, res) => {
+  try {
+    const originToRemove = decodeURIComponent(req.params.origin);
+    const origins = readAllowedOrigins();
+
+    const index = origins.indexOf(originToRemove);
+    if (index === -1) {
+      return res.status(404).json({
+        success: false,
+        message: "Origin not found",
+      });
+    }
+
+    // Prevent removing last origin
+    if (origins.length === 1) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Cannot remove the last origin. At least one origin is required.",
+      });
+    }
+
+    origins.splice(index, 1);
+
+    if (!writeAllowedOrigins(origins)) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to save origins to .env file",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Origin removed. Restart server to apply changes.",
+      data: origins,
+    });
+  } catch (error) {
+    console.error("Error removing origin:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Failed to remove origin",
+    });
   }
 });
 
