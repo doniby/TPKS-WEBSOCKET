@@ -1,4 +1,5 @@
 ⚠️ Note !!
+
 This project was built as an internal operational tool and depends on an Oracle Database connection.
 It is not intended to run locally without Oracle access.
 The repository is shared to demonstrate WebSocket architecture, real-time data handling, and system design.
