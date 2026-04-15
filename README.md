@@ -1,10 +1,16 @@
-# TPKS Dashboard WebSocket Server
+⚠️ Note !!
 
-A real-time WebSocket server with an admin dashboard for managing dynamic database-driven events. Built with Node.js, Express, Socket.IO, React, and Oracle Database.
+This project was built as an internal operational tool and depends on an Oracle Database connection.
+It is not intended to run locally without Oracle access.
+The repository is shared to demonstrate WebSocket architecture, real-time data handling, and system design.
+
+# Dashboard WebSocket Server
+
+A WebSocket server with an admin dashboard for managing dynamic database-driven events. Built with Node.js, Express, Socket.IO, React, and Oracle Database.
 
 ## Features
 
-- **Real-time WebSocket Broadcasting**: Broadcast database query results to connected clients at configurable intervals
+- **WebSocket Broadcasting**: Broadcast database query results to connected clients at configurable intervals
 - **Dynamic Event Management**: Create, edit, delete events without server restart
 - **Query Testing**: Test SQL queries before deployment with execution time and preview
 - **Admin Dashboard**: Modern React UI for managing events and monitoring server health
@@ -264,14 +270,6 @@ The Query Tester helps you create optimal events:
 ⚠ Warning: Query returned 1,250 rows. Consider limiting results.
 ```
 
-## Security Considerations
-
-1. **Change Default Credentials**: Update `JWT_SECRET`, `ADMIN_PASSWORD`, and `API_KEY` in .env
-2. **SQL Injection Protection**: Only SELECT queries allowed, dangerous keywords blocked
-3. **Rate Limiting**: Prevents brute force and DoS attacks
-4. **CORS**: Configure ALLOWED_ORIGINS for production
-5. **HTTPS**: Use HTTPS in production (place behind nginx/Apache)
-
 ## Troubleshooting
 
 ### Database Connection Failed
@@ -297,14 +295,6 @@ Error: Oracle Client Init Failed. Check ORACLE_CLIENT_PATH
 - Check JWT_SECRET is set correctly
 - Clear browser localStorage and retry
 
-## Performance Tips
-
-1. **Optimize Queries**: Use indexes, limit result sets
-2. **Adjust Intervals**: Don't set intervals shorter than query execution time
-3. **Monitor Skips**: If "Skipped" count increases, query is too slow or interval too short
-4. **Database Pool**: Increase `DB_POOL_MAX` if you have many concurrent events
-5. **Memory**: Monitor heap usage in Monitoring page
-
 ## API Endpoints
 
 ### Admin Auth
@@ -323,11 +313,3 @@ Error: Oracle Client Init Failed. Check ORACLE_CLIENT_PATH
 - `GET /api/monitoring/stats` - Server statistics
 - `GET /api/monitoring/events` - Event execution stats
 - `GET /health` - Health check
-
-## License
-
-ISC
-
-## Support
-
-For issues or questions, contact the development team or create an issue in the repository.
