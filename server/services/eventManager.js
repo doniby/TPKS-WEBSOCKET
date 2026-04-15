@@ -309,8 +309,8 @@ class EventManager {
 
       const result = await connection.execute(sqlQuery, [], {
         outFormat: oracledb.OUT_FORMAT_OBJECT,
-        maxRows: 50, // Limit result size
-        fetchArraySize: 100,
+        maxRows: 1000, // Increased limit from 50 to allow full dashboard payloads
+        fetchArraySize: 1000,
       });
 
       const executionTime = Date.now() - startTime;
