@@ -46,6 +46,15 @@ const Layout = ({ children }) => {
             ⚙️ Events
           </Link>
           <Link
+            to="/apps"
+            style={{
+              ...styles.navLink,
+              ...(isActive("/apps") ? styles.navLinkActive : {}),
+            }}
+          >
+            🔐 App Registry
+          </Link>
+          <Link
             to="/monitoring"
             style={{
               ...styles.navLink,

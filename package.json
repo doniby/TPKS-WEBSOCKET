@@ -6,7 +6,11 @@
   "scripts": {
     "start": "node server/server.js",
     "dev": "set NODE_ENV=development&& nodemon server/server.js",
-    "generate-token": "node server/utils/generateToken.js"
+    "generate-token": "node server/utils/generateToken.js",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f tpks-websocket"
   },
   "keywords": [
     "websocket",

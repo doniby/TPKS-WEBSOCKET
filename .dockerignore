@@ -1,0 +1,41 @@
+# Dependencies (will be installed inside container)
+node_modules
+client/node_modules
+
+# Environment files (loaded via docker-compose env_file)
+.env
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+nbproject
+*.swp
+*.swo
+*~
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts (client will be rebuilt in Docker)
+client/dist
+client/build
+dist
+build
+
+# Documentation
+README.md
+client/README.md
+
+# Temp
+*.tmp
+*.temp

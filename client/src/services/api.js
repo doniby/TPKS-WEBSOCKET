@@ -87,4 +87,16 @@ export const originsAPI = {
     api.delete(`/admin/origins/${encodeURIComponent(origin)}`),
 };
 
+// --- APP REGISTRY ---
+export const appsAPI = {
+  getAll: () => api.get("/apps"),
+  getById: (id) => api.get(`/apps/${id}`),
+  create: (data) => api.post("/apps", data),
+  update: (id, data) => api.put(`/apps/${id}`, data),
+  delete: (id) => api.delete(`/apps/${id}`),
+  toggle: (id) => api.patch(`/apps/${id}/toggle`),
+  rotateSecret: (id) => api.post(`/apps/${id}/rotate-secret`),
+  reload: () => api.post("/apps/reload"),
+};
+
 export default api;

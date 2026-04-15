@@ -357,8 +357,19 @@ class EventManager {
           executionTime: executionTime,
         };
 
-        // Broadcast to all connected clients
-        this.io.emit(this.getEventChannel(eventName), broadcastData);
+        // Broadcast to authorized clients only (channel-scoped)
+        const channel = this.getEventChannel(eventName);
+        let sentCount = 0;
+
+        for (const [socketId, socket] of this.io.sockets.sockets) {
+          // If user has no channel restrictions (null), they get everything
+          // If user has channel restrictions, check if this channel is allowed
+          if (!socket.user?.channels || socket.user.channels.has(channel)) {
+            socket.emit(channel, broadcastData);
+            sentCount++;
+          }
+        }
+
 
         console.log(
           `✅ Event "${eventName}" executed and broadcasted (${executionTime}ms, ${

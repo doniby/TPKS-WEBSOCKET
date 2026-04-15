@@ -5,6 +5,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Events from "./pages/Events";
+import Apps from "./pages/Apps";
 import Monitoring from "./pages/Monitoring";
 import Settings from "./pages/Settings";
 
@@ -64,6 +65,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Events />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/apps"
+        element={
+          <ProtectedRoute>
+            <Apps />
           </ProtectedRoute>
         }
       />

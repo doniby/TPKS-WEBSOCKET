@@ -1,5 +1,6 @@
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
+const AppRegistry = require('../services/appRegistry');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const API_KEY = process.env.API_KEY;
@@ -11,34 +12,53 @@ if (!JWT_SECRET || JWT_SECRET === 'your-super-secret-jwt-key-change-this-in-prod
 }
 
 /**
- * Middleware to authenticate WebSocket connections via JWT or API Key
- * Used for public dashboard clients connecting to WebSocket
+ * Middleware to authenticate WebSocket connections.
+ *
+ * Supports three authentication methods (checked in order):
+ *   1. App Registry — appId + appSecret (for registered apps like ETERNAL)
+ *   2. JWT Token   — Bearer token (for admin/programmatic clients)
+ *   3. API Key     — Static key (for simple integrations)
+ *
+ * The old `?dashboard=true` query parameter bypass has been REMOVED.
  */
 function authenticateSocket(socket, next) {
   try {
-    // Allow public dashboard connections (read-only, no authentication required)
-    const isDashboard = socket.handshake.query.dashboard === 'true';
-
-    if (isDashboard) {
-      socket.user = {
-        type: 'public-dashboard',
-        readonly: true
-      };
-      socket.authenticated = true;
-      console.log('[Auth] Public dashboard connection allowed:', socket.id);
-      return next();
-    }
-
-    // Check Auth Object (Client) or Headers (Postman/Proxy)
+    // Extract auth credentials from handshake
+    const appId = socket.handshake.auth.appId;
+    const appSecret = socket.handshake.auth.appSecret;
     const token = socket.handshake.auth.token || socket.handshake.headers['authorization'];
     const apiKey = socket.handshake.auth.apiKey || socket.handshake.headers['app_key'];
 
-    // 1. JWT Authentication
+    // 1. App Registry Authentication (primary method for dashboard clients)
+    if (appId && appSecret) {
+      const appRegistry = AppRegistry.getInstance();
+      const result = appRegistry.validateApp(appId, appSecret);
+
+      if (result.valid) {
+        socket.user = {
+          type: 'registered-app',
+          appName: result.app.appName,
+          channels: result.app.channels,  // Set of allowed channels, or null for all
+          readonly: true
+        };
+        socket.authenticated = true;
+
+        // Fire-and-forget: update last connected timestamp
+        appRegistry.updateLastConnected(appId);
+
+        console.log(`[Auth] App "${appId}" authenticated: ${socket.id}`);
+        return next();
+      } else {
+        console.warn(`[Auth] App "${appId}" rejected: ${result.reason} (IP: ${socket.handshake.address})`);
+        return next(new Error('Invalid app credentials'));
+      }
+    }
+
+    // 2. JWT Authentication (admin clients, programmatic access)
     if (token) {
       try {
-        const cleanToken = token.replace('Bearer ', ''); // Remove prefix if present
-
-        const decoded = jwt.verify(cleanToken, process.env.JWT_SECRET);
+        const cleanToken = token.replace('Bearer ', '');
+        const decoded = jwt.verify(cleanToken, JWT_SECRET);
         socket.user = decoded;
         socket.authenticated = true;
         return next();
@@ -47,9 +67,9 @@ function authenticateSocket(socket, next) {
       }
     }
 
-    // 2. API Key Authentication
+    // 3. API Key Authentication (simple integrations)
     if (apiKey) {
-      if (apiKey === process.env.API_KEY) {
+      if (apiKey === API_KEY) {
         socket.user = { type: 'api-client' };
         socket.authenticated = true;
         return next();
@@ -58,7 +78,9 @@ function authenticateSocket(socket, next) {
       }
     }
 
-    return next(new Error('Authentication required'));
+    // No credentials provided
+    console.warn(`[Auth] Connection rejected — no credentials provided (IP: ${socket.handshake.address})`);
+    return next(new Error('Authentication required. Provide appId+appSecret, JWT token, or API key.'));
 
   } catch (error) {
     console.error('Authentication error:', error.message);

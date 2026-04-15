@@ -6,14 +6,16 @@ const { Server } = require("socket.io");
 const { RateLimiterMemory } = require("rate-limiter-flexible");
 const path = require("path");
 
-const { initializePool, closePool } = require("./config/db");
+const { initializePool, closePool, logPoolHealth } = require("./config/db");
 const { authenticateSocket } = require("./middleware/auth");
 const EventManager = require("./services/eventManager");
+const AppRegistry = require("./services/appRegistry");
 
 // Import API routes
 const apiAuth = require("./routes/api-auth");
 const apiEvents = require("./routes/api-events");
 const apiMonitoring = require("./routes/api-monitoring");
+const apiApps = require("./routes/api-apps");
 
 const app = express();
 
@@ -67,6 +69,7 @@ app.use((req, res, next) => {
 app.use("/api/admin", apiAuth);
 app.use("/api/events", apiEvents);
 app.use("/api/monitoring", apiMonitoring);
+app.use("/api/apps", apiApps);
 
 // Basic health check (no auth required)
 app.get("/health", (req, res) => {
@@ -169,11 +172,15 @@ io.on("connection", (socket) => {
     return;
   }
 
+  // Build identity string for logging
+  const identity = socket.user?.appName || socket.user?.userId || socket.user?.type || "unknown";
+  const channelInfo = socket.user?.channels ? `[${[...socket.user.channels].join(",")}]` : "[ALL]";
+
   console.log(
     "✅ User connected:",
     socket.id,
-    `| User:`,
-    socket.user?.userId || socket.user?.type || "unknown",
+    `| App: ${identity}`,
+    `| Channels: ${channelInfo}`,
     `| Total: ${activeConnections}`
   );
 
@@ -200,14 +207,14 @@ io.on("connection", (socket) => {
     }
   });
 
-  // NEW: Handle client request for initial cached state (Data Hydration)
+  // Handle client request for initial cached state (Data Hydration)
   socket.on("REQUEST_INITIAL_STATE", async (data) => {
     try {
       await rateLimiter.consume(socket.id);
 
       const eventManager = app.get("eventManager");
 
-      // Require client to specify event names (Option B)
+      // Require client to specify event names
       if (
         !data?.eventNames ||
         !Array.isArray(data.eventNames) ||
@@ -220,11 +227,20 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // Send only requested events
+      // Send only requested events (with channel authorization check)
       for (const eventName of data.eventNames) {
+        const channel = eventManager.getEventChannel(eventName);
+
+        // Channel authorization: skip channels the app is not allowed to receive
+        if (socket.user?.channels && !socket.user.channels.has(channel)) {
+          console.warn(
+            `⚠️  App "${socket.user.appName}" not authorized for channel "${channel}" — skipping`
+          );
+          continue;
+        }
+
         const cached = eventManager.getCachedDataByName(eventName);
         if (cached) {
-          const channel = eventManager.getEventChannel(eventName);
           socket.emit(channel, {
             eventName: eventName,
             data: cached.data,
@@ -279,15 +295,20 @@ async function startApp() {
     // 1. Initialize database pool
     await initializePool();
 
-    // 2. Initialize EventManager
+    // 2. Initialize App Registry (must be before EventManager)
+    const appRegistry = new AppRegistry();
+    await appRegistry.initialize();
+
+    // 3. Initialize EventManager
     const eventManager = new EventManager(io);
     await eventManager.initialize();
 
-    // Make eventManager and io available to routes
+    // Make eventManager, appRegistry and io available to routes
     app.set("eventManager", eventManager);
+    app.set("appRegistry", appRegistry);
     app.set("io", io);
 
-    // 3. Start server
+    // 4. Start server
     const PORT = process.env.PORT || 3000;
     const HOST = process.env.HOST || "0.0.0.0"; // Bind to all interfaces
     server.listen(PORT, HOST, () => {
@@ -297,9 +318,15 @@ async function startApp() {
       console.log(`📍 Port: ${PORT}`);
       console.log(`📍 Environment: ${process.env.NODE_ENV || "development"}`);
       console.log(`🔒 Allowed origins: ${allowedOrigins.join(", ")}`);
+      console.log(`🔐 Registered apps: ${appRegistry.apps.size}`);
       console.log(`📊 Active events: ${eventManager.events.size}`);
       console.log(`${"=".repeat(60)}\n`);
     });
+
+    // 4. Start periodic pool health monitoring (every 5 minutes)
+    setInterval(() => {
+      logPoolHealth();
+    }, 5 * 60 * 1000);
   } catch (error) {
     console.error("❌ Startup failed:", error.message);
     process.exit(1);
@@ -331,6 +358,25 @@ async function gracefulShutdown(signal) {
 
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+// --- CRASH HANDLERS (prevent orphaned DB sessions) ---
+process.on("uncaughtException", async (error) => {
+  console.error("💥 Uncaught Exception:", error.message);
+  console.error(error.stack);
+  try {
+    const eventManager = app.get("eventManager");
+    if (eventManager) eventManager.stopAll();
+    await closePool();
+  } catch (e) {
+    console.error("Error during crash cleanup:", e.message);
+  }
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("💥 Unhandled Rejection at:", promise, "reason:", reason);
+  // Don't exit — just log. The pool ping will handle stale connections.
+});
 
 // Start the application
 startApp();

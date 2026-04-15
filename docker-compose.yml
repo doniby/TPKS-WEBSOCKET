@@ -1,0 +1,40 @@
+version: "3.8"
+
+services:
+  tpks-websocket:
+    image: ${REGISTRY}/${IMAGE_NAME}:${TAG}
+    container_name: ${CONTAINER_NAME}
+    restart: unless-stopped
+    ports:
+      - "${PORT}:3000"
+    environment:
+      - NODE_ENV=${NODE_ENV}
+      - PORT=${PORT}
+      - ORACLE_CLIENT_PATH=/opt/oracle/instantclient
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_SID=${DB_SID}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_POOL_MIN=${DB_POOL_MIN}
+      - DB_POOL_MAX=${DB_POOL_MAX}
+      - JWT_SECRET=${JWT_SECRET}
+      - API_KEY=${API_KEY}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+      - RATE_LIMIT_POINTS=${RATE_LIMIT_POINTS}
+      - RATE_LIMIT_DURATION=${RATE_LIMIT_DURATION}
+      - MAX_CONNECTIONS=${MAX_CONNECTIONS}
+      - VERSION=${VERSION:-1.0.0}
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http = require('http'); http.get('http://localhost:3000/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
