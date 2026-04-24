@@ -10,14 +10,25 @@ const { initializePool, closePool, logPoolHealth } = require("./config/db");
 const { authenticateSocket } = require("./middleware/auth");
 const EventManager = require("./services/eventManager");
 const AppRegistry = require("./services/appRegistry");
+const MqttBridge = require("./services/mqttBridge");
+const { getLogger } = require("./utils/logger");
 
 // Import API routes
 const apiAuth = require("./routes/api-auth");
 const apiEvents = require("./routes/api-events");
 const apiMonitoring = require("./routes/api-monitoring");
 const apiApps = require("./routes/api-apps");
+const apiMqtt = require("./routes/api-mqtt");
 
 const app = express();
+
+// Initialize logger
+const logger = getLogger({
+  logDir: path.join(__dirname, "../logs"),
+  minLogLevel: process.env.LOG_LEVEL || (process.env.NODE_ENV === "production" ? "warn" : "debug"),
+  useConsole: true,
+});
+app.set("logger", logger);
 
 // --- MIDDLEWARE ---
 // Helmet security headers - configure for non-HTTPS environment
@@ -70,6 +81,7 @@ app.use("/api/admin", apiAuth);
 app.use("/api/events", apiEvents);
 app.use("/api/monitoring", apiMonitoring);
 app.use("/api/apps", apiApps);
+app.use("/api/mqtt", apiMqtt);
 
 // Basic health check (no auth required)
 app.get("/health", (req, res) => {
@@ -105,6 +117,19 @@ app.get("/", (req, res) => {
   });
 });
 
+// --- EXPRESS ERROR HANDLER (must be last) ---
+app.use((err, req, res, next) => {
+  logger.error("Express Error:", err, {
+    url: req.url,
+    method: req.method,
+    ip: req.ip,
+  });
+  res.status(err.status || 500).json({
+    error: "Internal Server Error",
+    message: process.env.NODE_ENV === "production" ? "An error occurred" : err.message,
+  });
+});
+
 const server = http.createServer(app);
 
 // --- WEBSOCKET CONFIGURATION ---
@@ -124,6 +149,17 @@ const io = new Server(server, {
   connectionStateRecovery: {
     maxDisconnectionDuration: 2 * 60 * 1000,
   },
+});
+
+// --- SOCKET.IO ERROR HANDLERS ---
+io.on("error", (error) => {
+  logger.error("Socket.io Server Error:", error);
+});
+
+io.on("connect_error", (error) => {
+  logger.error("Socket.io Connection Error:", error, {
+    message: error.message,
+  });
 });
 
 // --- RATE LIMITING ---
@@ -183,6 +219,14 @@ io.on("connection", (socket) => {
     `| Channels: ${channelInfo}`,
     `| Total: ${activeConnections}`
   );
+
+  // Per-socket error handler
+  socket.on("error", (error) => {
+    logger.error("Socket Error:", error, {
+      socketId: socket.id,
+      identity: identity,
+    });
+  });
 
   // Check sleep mode on connection
   const eventManager = app.get("eventManager");
@@ -308,7 +352,12 @@ async function startApp() {
     app.set("appRegistry", appRegistry);
     app.set("io", io);
 
-    // 4. Start server
+    // 4. Initialize MQTT bridge (loads topics from WS_MQTT_TOPICS)
+    const mqttBridge = new MqttBridge(io);
+    app.set("mqttBridge", mqttBridge);
+    await mqttBridge.start();
+
+    // 5. Start server
     const PORT = process.env.PORT || 3000;
     const HOST = process.env.HOST || "0.0.0.0"; // Bind to all interfaces
     server.listen(PORT, HOST, () => {
@@ -323,7 +372,7 @@ async function startApp() {
       console.log(`${"=".repeat(60)}\n`);
     });
 
-    // 4. Start periodic pool health monitoring (every 5 minutes)
+    // 6. Start periodic pool health monitoring (every 5 minutes)
     setInterval(() => {
       logPoolHealth();
     }, 5 * 60 * 1000);
@@ -349,6 +398,12 @@ async function gracefulShutdown(signal) {
     console.log("✅ Event manager stopped");
   }
 
+  const mqttBridge = app.get("mqttBridge");
+  if (mqttBridge) {
+    mqttBridge.stop();
+    console.log("✅ MQTT bridge stopped");
+  }
+
   // Close database pool
   await closePool();
 
@@ -361,20 +416,21 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 // --- CRASH HANDLERS (prevent orphaned DB sessions) ---
 process.on("uncaughtException", async (error) => {
-  console.error("💥 Uncaught Exception:", error.message);
-  console.error(error.stack);
+  logger.error("💥 Uncaught Exception:", error);
   try {
     const eventManager = app.get("eventManager");
     if (eventManager) eventManager.stopAll();
     await closePool();
   } catch (e) {
-    console.error("Error during crash cleanup:", e.message);
+    logger.error("Error during crash cleanup:", e);
   }
   process.exit(1);
 });
 
 process.on("unhandledRejection", (reason, promise) => {
-  console.error("💥 Unhandled Rejection at:", promise, "reason:", reason);
+  logger.error("💥 Unhandled Rejection:", reason instanceof Error ? reason : new Error(String(reason)), {
+    promise: String(promise),
+  });
   // Don't exit — just log. The pool ping will handle stale connections.
 });
 

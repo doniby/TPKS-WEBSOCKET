@@ -87,6 +87,16 @@ export const originsAPI = {
     api.delete(`/admin/origins/${encodeURIComponent(origin)}`),
 };
 
+// --- MQTT BRIDGE ---
+export const mqttAPI = {
+  getStatus: () => api.get("/mqtt/status"),
+  getTopics: () => api.get("/mqtt/topics"),
+  addTopic: (data) => api.post("/mqtt/topics", data),
+  toggle: (id) => api.patch(`/mqtt/topics/${id}/toggle`),
+  delete: (id) => api.delete(`/mqtt/topics/${id}`),
+  reload: () => api.post("/mqtt/reload"),
+};
+
 // --- APP REGISTRY ---
 export const appsAPI = {
   getAll: () => api.get("/apps"),

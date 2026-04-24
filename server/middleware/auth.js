@@ -26,8 +26,8 @@ function authenticateSocket(socket, next) {
     // Extract auth credentials from handshake
     const appId = socket.handshake.auth.appId;
     const appSecret = socket.handshake.auth.appSecret;
-    const token = socket.handshake.auth.token || socket.handshake.headers['authorization'];
-    const apiKey = socket.handshake.auth.apiKey || socket.handshake.headers['app_key'];
+    const token = socket.handshake.auth.token || socket.handshake.query.token || socket.handshake.headers['authorization'];
+    const apiKey = socket.handshake.auth.apiKey || socket.handshake.query.apiKey || socket.handshake.headers['app_key'];
 
     // 1. App Registry Authentication (primary method for dashboard clients)
     if (appId && appSecret) {

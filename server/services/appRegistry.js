@@ -1,5 +1,6 @@
 const { getPool, oracledb } = require("../config/db");
 const crypto = require("crypto");
+const { getLogger } = require("../utils/logger");
 
 /**
  * AppRegistry — Manages registered application identities for WebSocket authentication.
@@ -19,6 +20,7 @@ class AppRegistry {
 
     this.apps = new Map(); // Map<appName, { appId, appSecret, channels, description, isActive }>
     this.isInitialized = false;
+    this.logger = getLogger();
 
     AppRegistry._instance = this;
   }

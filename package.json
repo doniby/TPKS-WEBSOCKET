@@ -5,7 +5,8 @@
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",
-    "dev": "set NODE_ENV=development&& nodemon server/server.js",
+    "dev": "nodemon server/server.js",
+    "dev:debug": "set NODE_ENV=development&& nodemon server/server.js",
     "generate-token": "node server/utils/generateToken.js",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up -d",
@@ -25,9 +26,11 @@
     "express": "^5.1.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
+    "mqtt": "^5.10.3",
     "oracledb": "^6.10.0",
     "rate-limiter-flexible": "^8.3.0",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
     "nodemon": "^3.0.0"

@@ -7,6 +7,7 @@ import Dashboard from "./pages/Dashboard";
 import Events from "./pages/Events";
 import Apps from "./pages/Apps";
 import Monitoring from "./pages/Monitoring";
+import MqttTopics from "./pages/MqttTopics";
 import Settings from "./pages/Settings";
 
 // Protected route wrapper
@@ -81,6 +82,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Monitoring />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/mqtt"
+        element={
+          <ProtectedRoute>
+            <MqttTopics />
           </ProtectedRoute>
         }
       />

@@ -64,6 +64,15 @@ const Layout = ({ children }) => {
             📈 Monitoring
           </Link>
           <Link
+            to="/mqtt"
+            style={{
+              ...styles.navLink,
+              ...(isActive("/mqtt") ? styles.navLinkActive : {}),
+            }}
+          >
+            📡 MQTT Topics
+          </Link>
+          <Link
             to="/settings"
             style={{
               ...styles.navLink,

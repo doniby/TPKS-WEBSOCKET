@@ -1,11 +1,13 @@
 const { getPool, oracledb } = require("../config/db");
 const crypto = require("crypto");
+const { getLogger } = require("../utils/logger");
 
 class EventManager {
   constructor(io) {
     this.io = io;
     this.events = new Map();
     this.isInitialized = false;
+    this.logger = getLogger();
 
     // Caching configuration
     this.maxCacheSize = parseInt(process.env.MAX_EVENT_CACHE_MB) || 10; // 10MB per event
@@ -23,9 +25,23 @@ class EventManager {
     this.sleepTimer = null;
   }
 
+  /**
+   * Safely broadcast to a socket with error handling
+   */
+  safeBroadcast(socket, channel, data) {
+    try {
+      socket.emit(channel, data);
+    } catch (error) {
+      this.logger.error("Failed to emit to socket:", error, {
+        socketId: socket.id,
+        channel: channel,
+      });
+    }
+  }
+
   async initialize() {
     if (this.isInitialized) {
-      console.warn("⚠️  EventManager already initialized");
+      this.logger.warn("EventManager already initialized");
       return;
     }
 
@@ -33,11 +49,9 @@ class EventManager {
       // Use staggered load on startup to prevent connection pool exhaustion
       await this.loadEventsStaggered();
       this.isInitialized = true;
-      console.log(
-        `✅ EventManager initialized with ${this.events.size} active events`
-      );
+      this.logger.info(`EventManager initialized with ${this.events.size} active events`);
     } catch (error) {
-      console.error("❌ EventManager initialization failed:", error.message);
+      this.logger.error("EventManager initialization failed:", error);
       throw error;
     }
   }
@@ -124,7 +138,7 @@ class EventManager {
       }));
 
       if (eventConfigs.length === 0) {
-        console.log("📊 No active events to load");
+        this.logger.info("No active events to load");
         return;
       }
 
@@ -142,10 +156,11 @@ class EventManager {
 
       const totalStaggerTime = staggerDelay * eventConfigs.length;
 
-      console.log(`🚀 EventManager starting with staggered load...`);
-      console.log(`   Events to load: ${eventConfigs.length}`);
-      console.log(`   Stagger interval: ${staggerDelay}ms`);
-      console.log(`   Total stagger time: ~${totalStaggerTime}ms`);
+      this.logger.info(`EventManager starting with staggered load`, {
+        events: eventConfigs.length,
+        staggerInterval: staggerDelay,
+        totalTime: totalStaggerTime,
+      });
 
       // Start events with staggered delays
       this.isStaggering = true;
@@ -158,7 +173,7 @@ class EventManager {
       // Mark staggering as complete after all events are scheduled
       setTimeout(() => {
         this.isStaggering = false;
-        console.log(`✅ All ${eventConfigs.length} events started`);
+        this.logger.info(`All ${eventConfigs.length} events started`);
 
         // NEW: Check if we should immediately go to sleep (no clients connected)
         if (this.sleepOnStartup) {
@@ -168,10 +183,10 @@ class EventManager {
         }
       }, totalStaggerTime + 1000);
     } catch (error) {
-      console.error("Error loading events with stagger:", error.message);
+      this.logger.error("Error loading events with stagger:", error);
       this.isStaggering = false;
       // Fallback to immediate load
-      console.warn("⚠️  Falling back to immediate load");
+      this.logger.warn("Falling back to immediate load");
       await this.loadEvents();
     } finally {
       if (connection) {
@@ -225,9 +240,7 @@ class EventManager {
 
     this.events.set(eventId, eventData);
 
-    console.log(
-      `▶️  Started event: "${eventName}" (ID: ${eventId}) - Interval: ${intervalSeconds}s`
-    );
+    this.logger.info(`Started event: "${eventName}" (ID: ${eventId}) - Interval: ${intervalSeconds}s`);
   }
 
   /**
@@ -277,9 +290,7 @@ class EventManager {
       this.executeEvent(eventId, eventData);
     }, intervalSeconds * 1000);
 
-    console.log(
-      `▶️  Started event: "${eventName}" (ID: ${eventId}) - Interval: ${intervalSeconds}s`
-    );
+    this.logger.info(`Started event: "${eventName}" (ID: ${eventId}) - Interval: ${intervalSeconds}s`);
   }
 
   /**
@@ -291,9 +302,7 @@ class EventManager {
     // Prevent overlap: Skip if previous execution still running
     if (eventData.isRunning) {
       eventData.stats.skippedCount++;
-      console.warn(
-        `⏭️  Skipping event "${eventName}" - Previous execution still running`
-      );
+      this.logger.warn(`Skipping event "${eventName}" - Previous execution still running`);
       return;
     }
 
@@ -337,8 +346,8 @@ class EventManager {
             JSON.stringify(eventData.cachedData),
             "utf8"
           );
-          console.warn(
-            `⚠️  Cache for "${eventName}" exceeds ${this.maxCacheSize}MB, truncated to 100 rows`
+          this.logger.warn(
+            `Cache for "${eventName}" exceeds ${this.maxCacheSize}MB, truncated to 100 rows`
           );
         } else {
           eventData.cachedData = result.rows;
@@ -365,20 +374,18 @@ class EventManager {
           // If user has no channel restrictions (null), they get everything
           // If user has channel restrictions, check if this channel is allowed
           if (!socket.user?.channels || socket.user.channels.has(channel)) {
-            socket.emit(channel, broadcastData);
+            this.safeBroadcast(socket, channel, broadcastData);
             sentCount++;
           }
         }
 
 
-        console.log(
-          `✅ Event "${eventName}" executed and broadcasted (${executionTime}ms, ${
-            result.rows.length
-          } rows, cache: ${(eventData.cacheSize / 1024).toFixed(2)}KB)`
+        this.logger.debug(
+          `Event "${eventName}" executed and broadcasted (${executionTime}ms, ${result.rows.length} rows)`
         );
       } else {
-        console.log(
-          `✅ Event "${eventName}" executed but data was unchanged (${executionTime}ms, ${result.rows.length} rows)`
+        this.logger.debug(
+          `Event "${eventName}" executed but data unchanged (${executionTime}ms, ${result.rows.length} rows)`
         );
       }
 
@@ -401,15 +408,22 @@ class EventManager {
       // Update database stats
       await this.updateEventStats(eventId, executionTime, "error");
 
-      console.error(`❌ Event "${eventName}" execution failed:`, error.message);
+      this.logger.error(`Event "${eventName}" execution failed:`, error);
 
       // Emit error to clients (without exposing sensitive error details)
-      this.io.emit(this.getEventChannel(eventName), {
+      const errorChannel = this.getEventChannel(eventName);
+      const errorData = {
         eventName: eventName,
         error: true,
         message: "Data temporarily unavailable",
         timestamp: new Date().toISOString(),
-      });
+      };
+
+      for (const [, socket] of this.io.sockets.sockets) {
+        if (!socket.user?.channels || socket.user.channels.has(errorChannel)) {
+          this.safeBroadcast(socket, errorChannel, errorData);
+        }
+      }
     } finally {
       eventData.isRunning = false;
 
@@ -452,9 +466,9 @@ class EventManager {
         { autoCommit: true }
       );
 
-      console.warn(`⚠️  Error logged to database for event ${eventId}`);
+      this.logger.warn(`Error logged to database for event ${eventId}`);
     } catch (error) {
-      console.error("Error updating event stats:", error.message);
+      this.logger.error("Error updating event stats:", error);
       // Don't throw - error is already tracked in memory
     } finally {
       if (connection) {
@@ -474,7 +488,7 @@ class EventManager {
     if (eventData && eventData.timer) {
       clearInterval(eventData.timer);
       this.events.delete(eventId);
-      console.log(`⏸️  Stopped event ID: ${eventId}`);
+      this.logger.debug(`Stopped event ID: ${eventId}`);
     }
   }
 
@@ -488,7 +502,7 @@ class EventManager {
       }
     }
     this.events.clear();
-    console.log("⏸️  All events stopped");
+    this.logger.debug("All events stopped");
   }
 
   /**
