@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { LogIn } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import Button from "../components/ui/Button";
+import Input from "../components/ui/Input";
 
 const Login = () => {
   const [username, setUsername] = useState("");
@@ -28,137 +31,46 @@ const Login = () => {
   };
 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <div style={styles.header}>
-          <h1 style={styles.title}>WEBSOCKET MONITORING</h1>
-          <p style={styles.subtitle}>Sign in to manage WebSocket events</p>
+    <div className="login-page">
+      <div className="login-card">
+        <div className="field" style={{ marginBottom: "1rem" }}>
+          <h1>WebSocket Monitoring</h1>
+          <p>Sign in to manage WebSocket events</p>
         </div>
 
-        {error && <div style={styles.error}>{error}</div>}
+        {error && <div className="alert error">{error}</div>}
 
-        <form onSubmit={handleSubmit} style={styles.form}>
-          <div style={styles.inputGroup}>
-            <label style={styles.label}>Username</label>
-            <input
+        <form onSubmit={handleSubmit} className="grid" style={{ gap: "0.9rem" }}>
+          <div className="field">
+            <label>Username</label>
+            <Input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
               autoFocus
               disabled={loading}
-              style={styles.input}
             />
           </div>
 
-          <div style={styles.inputGroup}>
-            <label style={styles.label}>Password</label>
-            <input
+          <div className="field">
+            <label>Password</label>
+            <Input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               disabled={loading}
-              style={styles.input}
             />
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              ...styles.button,
-              ...(loading ? styles.buttonDisabled : {}),
-            }}
-          >
+          <Button type="submit" disabled={loading} variant="primary" icon={LogIn}>
             {loading ? "Signing in..." : "Sign In"}
-          </button>
+          </Button>
         </form>
       </div>
     </div>
   );
-};
-
-const styles = {
-  container: {
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-    padding: "20px",
-  },
-  card: {
-    background: "white",
-    borderRadius: "12px",
-    boxShadow: "0 10px 40px rgba(0,0,0,0.2)",
-    width: "100%",
-    maxWidth: "400px",
-    padding: "40px",
-  },
-  header: {
-    textAlign: "center",
-    marginBottom: "30px",
-  },
-  title: {
-    fontSize: "28px",
-    fontWeight: "bold",
-    color: "#333",
-    margin: "0 0 8px 0",
-  },
-  subtitle: {
-    fontSize: "14px",
-    color: "#666",
-    margin: 0,
-  },
-  error: {
-    background: "#fee",
-    border: "1px solid #fcc",
-    borderRadius: "6px",
-    padding: "12px",
-    marginBottom: "20px",
-    color: "#c33",
-    fontSize: "14px",
-  },
-  form: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "20px",
-  },
-  inputGroup: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-  },
-  label: {
-    fontSize: "14px",
-    fontWeight: "500",
-    color: "#333",
-  },
-  input: {
-    padding: "12px",
-    fontSize: "14px",
-    border: "1px solid #ddd",
-    borderRadius: "6px",
-    outline: "none",
-    transition: "border-color 0.2s",
-  },
-  button: {
-    padding: "14px",
-    fontSize: "16px",
-    fontWeight: "600",
-    color: "white",
-    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-    border: "none",
-    borderRadius: "6px",
-    cursor: "pointer",
-    transition: "transform 0.2s",
-    marginTop: "10px",
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-    cursor: "not-allowed",
-  },
 };
 
 export default Login;

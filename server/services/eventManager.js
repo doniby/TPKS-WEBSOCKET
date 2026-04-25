@@ -23,6 +23,44 @@ class EventManager {
     this.sleepOnStartup = process.env.SLEEP_ON_STARTUP !== "false"; // NEW: Default: true
     this.sleepDelay = parseInt(process.env.SLEEP_MODE_DELAY) || 30000; // 30 seconds
     this.sleepTimer = null;
+
+    // Persist success heartbeat occasionally (avoid writing each successful run)
+    this.successHeartbeatMs =
+      parseInt(process.env.SUCCESS_HEALTH_HEARTBEAT_MS) || 30 * 60 * 1000;
+
+    // Track whether schema has new health columns to avoid repeating failing writes
+    this.healthColumnsAvailable = true;
+  }
+
+  createEventData(config) {
+    return {
+      config: config,
+      timer: null,
+      isRunning: false,
+      lastDataHash: null,
+      cachedData: null,
+      cacheTimestamp: null,
+      cacheSize: 0,
+      cacheTruncated: false,
+      health: {
+        currentState: "INIT",
+        lastSuccessAt: null,
+        lastErrorAt: null,
+        lastErrorMessage: null,
+        consecutiveErrors: 0,
+        lastPersistedSuccessAt: null,
+      },
+      stats: {
+        totalExecutions: 0,
+        successCount: 0,
+        errorCount: 0,
+        lastExecutionTime: null,
+        lastExecutionStatus: null,
+        lastExecutionTimestamp: null,
+        skippedCount: 0,
+        broadcasts: 0,
+      },
+    };
   }
 
   /**
@@ -209,26 +247,7 @@ class EventManager {
     }
 
     // Create event data structure
-    const eventData = {
-      config: config,
-      timer: null,
-      isRunning: false,
-      lastDataHash: null,
-      cachedData: null, // NEW: Store full query results
-      cacheTimestamp: null, // NEW: When cache was last updated
-      cacheSize: 0, // NEW: Byte size for monitoring
-      cacheTruncated: false, // NEW: Flag if truncated due to size
-      stats: {
-        totalExecutions: 0,
-        successCount: 0,
-        errorCount: 0,
-        lastExecutionTime: null,
-        lastExecutionStatus: null,
-        lastExecutionTimestamp: null,
-        skippedCount: 0, // Skipped due to previous execution still running
-        broadcasts: 0,
-      },
-    };
+    const eventData = this.createEventData(config);
 
     // Execute immediately on start
     this.executeEvent(eventId, eventData);
@@ -257,26 +276,7 @@ class EventManager {
     }
 
     // Create event data structure
-    const eventData = {
-      config: config,
-      timer: null,
-      isRunning: false,
-      lastDataHash: null,
-      cachedData: null,
-      cacheTimestamp: null,
-      cacheSize: 0,
-      cacheTruncated: false,
-      stats: {
-        totalExecutions: 0,
-        successCount: 0,
-        errorCount: 0,
-        lastExecutionTime: null,
-        lastExecutionStatus: null,
-        lastExecutionTimestamp: null,
-        skippedCount: 0,
-        broadcasts: 0,
-      },
-    };
+    const eventData = this.createEventData(config);
 
     this.events.set(eventId, eventData);
 
@@ -312,6 +312,7 @@ class EventManager {
 
     const pool = getPool();
     let connection;
+    const previousStatus = eventData.stats.lastExecutionStatus;
 
     try {
       connection = await pool.getConnection();
@@ -394,6 +395,28 @@ class EventManager {
       eventData.stats.lastExecutionTime = executionTime;
       eventData.stats.lastExecutionStatus = "success";
       eventData.stats.lastExecutionTimestamp = new Date();
+      eventData.health.currentState = "OK";
+      eventData.health.lastSuccessAt = new Date();
+      eventData.health.consecutiveErrors = 0;
+      eventData.health.lastErrorMessage = null;
+
+      // Persist success health on transition (error -> success) or heartbeat cadence.
+      const shouldPersistTransition = previousStatus === "error";
+      const shouldPersistHeartbeat =
+        !eventData.health.lastPersistedSuccessAt ||
+        Date.now() - eventData.health.lastPersistedSuccessAt.getTime() >=
+          this.successHeartbeatMs;
+
+      if (shouldPersistTransition || shouldPersistHeartbeat) {
+        await this.persistHealthSnapshot(eventId, {
+          currentState: "OK",
+          lastSuccessAt: eventData.health.lastSuccessAt,
+          consecutiveErrors: 0,
+          lastExecutionTime: executionTime,
+          legacyStatus: "success",
+        });
+        eventData.health.lastPersistedSuccessAt = new Date();
+      }
 
       // REMOVED: Database write for success (now memory-only)
       // Success stats are kept in memory to reduce database writes by ~90%
@@ -404,9 +427,20 @@ class EventManager {
       eventData.stats.lastExecutionTime = executionTime;
       eventData.stats.lastExecutionStatus = "error";
       eventData.stats.lastExecutionTimestamp = new Date();
+      eventData.health.currentState = "ERROR";
+      eventData.health.lastErrorAt = new Date();
+      eventData.health.lastErrorMessage = this.truncateErrorMessage(error.message);
+      eventData.health.consecutiveErrors += 1;
 
-      // Update database stats
-      await this.updateEventStats(eventId, executionTime, "error");
+      // Persist error snapshot to DB (with backward-compatible fallback).
+      await this.persistHealthSnapshot(eventId, {
+        currentState: "ERROR",
+        lastErrorAt: eventData.health.lastErrorAt,
+        lastErrorMessage: eventData.health.lastErrorMessage,
+        consecutiveErrors: eventData.health.consecutiveErrors,
+        lastExecutionTime: executionTime,
+        legacyStatus: "error",
+      });
 
       this.logger.error(`Event "${eventName}" execution failed:`, error);
 
@@ -436,14 +470,26 @@ class EventManager {
   }
 
   /**
-   * Update event execution stats in database (ERRORS ONLY)
-   * Success stats are kept in memory only to reduce DB writes
+   * Keep DB error message compact and safe for VARCHAR2 column
    */
-  async updateEventStats(eventId, executionTime, status) {
-    // NEW: Only write to database on errors
-    if (status !== "error") {
-      return; // Skip database write for success
-    }
+  truncateErrorMessage(message) {
+    if (!message) return null;
+    return String(message).slice(0, 1000);
+  }
+
+  /**
+   * Persist compact health snapshot. Falls back to legacy columns when new schema not yet applied.
+   */
+  async persistHealthSnapshot(eventId, payload) {
+    const {
+      currentState,
+      lastSuccessAt,
+      lastErrorAt,
+      lastErrorMessage,
+      consecutiveErrors,
+      lastExecutionTime,
+      legacyStatus,
+    } = payload;
 
     const pool = getPool();
     let connection;
@@ -451,25 +497,61 @@ class EventManager {
     try {
       connection = await pool.getConnection();
 
+      if (this.healthColumnsAvailable) {
+        try {
+          await connection.execute(
+            `UPDATE WS_EVENTS
+             SET CURRENT_STATE = NVL(:currentState, CURRENT_STATE),
+                 LAST_SUCCESS_AT = NVL(:lastSuccessAt, LAST_SUCCESS_AT),
+                 LAST_ERROR_AT = NVL(:lastErrorAt, LAST_ERROR_AT),
+                 LAST_ERROR_MESSAGE = NVL(:lastErrorMessage, LAST_ERROR_MESSAGE),
+                 CONSECUTIVE_ERRORS = NVL(:consecutiveErrors, CONSECUTIVE_ERRORS),
+                 LAST_EXECUTION_TIME = NVL(:executionTime, LAST_EXECUTION_TIME),
+                 LAST_EXECUTION_STATUS = NVL(:legacyStatus, LAST_EXECUTION_STATUS),
+                 LAST_EXECUTION_TIMESTAMP = CURRENT_TIMESTAMP,
+                 UPDATED_AT = CURRENT_TIMESTAMP
+             WHERE EVENT_ID = :eventId`,
+            {
+              currentState,
+              lastSuccessAt,
+              lastErrorAt,
+              lastErrorMessage,
+              consecutiveErrors,
+              executionTime: lastExecutionTime,
+              legacyStatus,
+              eventId,
+            },
+            { autoCommit: true }
+          );
+          return;
+        } catch (error) {
+          if (String(error.message).includes("ORA-00904")) {
+            this.healthColumnsAvailable = false;
+            this.logger.warn(
+              "WS_EVENTS health columns not available yet; using legacy status fields only"
+            );
+          } else {
+            throw error;
+          }
+        }
+      }
+
       await connection.execute(
         `UPDATE WS_EVENTS
-         SET LAST_EXECUTION_TIME = :executionTime,
-             LAST_EXECUTION_STATUS = :status,
+         SET LAST_EXECUTION_TIME = NVL(:executionTime, LAST_EXECUTION_TIME),
+             LAST_EXECUTION_STATUS = NVL(:legacyStatus, LAST_EXECUTION_STATUS),
              LAST_EXECUTION_TIMESTAMP = CURRENT_TIMESTAMP,
              UPDATED_AT = CURRENT_TIMESTAMP
          WHERE EVENT_ID = :eventId`,
         {
-          executionTime: executionTime,
-          status: status,
-          eventId: eventId,
+          executionTime: lastExecutionTime,
+          legacyStatus,
+          eventId,
         },
         { autoCommit: true }
       );
-
-      this.logger.warn(`Error logged to database for event ${eventId}`);
     } catch (error) {
-      this.logger.error("Error updating event stats:", error);
-      // Don't throw - error is already tracked in memory
+      this.logger.error("Error persisting event health snapshot:", error);
     } finally {
       if (connection) {
         try {
@@ -533,6 +615,7 @@ class EventManager {
         eventName: eventData.config.eventName,
         intervalSeconds: eventData.config.intervalSeconds,
         isRunning: eventData.isRunning,
+        health: eventData.health,
         stats: eventData.stats,
       });
     }
@@ -551,6 +634,7 @@ class EventManager {
           eventName: eventData.config.eventName,
           intervalSeconds: eventData.config.intervalSeconds,
           isRunning: eventData.isRunning,
+          health: eventData.health,
           stats: eventData.stats,
         }
       : null;
@@ -620,6 +704,7 @@ class EventManager {
         intervalSeconds: eventData.config.intervalSeconds,
         isRunning: eventData.isRunning,
         isSleeping: this.isSleeping,
+        health: eventData.health,
         stats: {
           ...eventData.stats,
           cacheSize: eventData.cacheSize,

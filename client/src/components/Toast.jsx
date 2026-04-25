@@ -31,17 +31,22 @@ export const ToastProvider = ({ children }) => {
     error: (msg) => addToast(msg, "error"),
     warning: (msg) => addToast(msg, "warning"),
     info: (msg) => addToast(msg, "info"),
+    showToast: (msg, type = "info") => addToast(msg, type),
   };
 
   return (
     <ToastContext.Provider value={toast}>
       {children}
-      <div style={styles.container}>
+      <div className="toast-stack">
         {toasts.map(({ id, message, type }) => (
-          <div key={id} style={{ ...styles.toast, ...styles[type] }}>
-            <span style={styles.icon}>{getIcon(type)}</span>
-            <span style={styles.message}>{message}</span>
-            <button onClick={() => removeToast(id)} style={styles.close}>
+          <div key={id} className={`toast ${type}`}>
+            <span>{getIcon(type)}</span>
+            <span>{message}</span>
+            <button
+              onClick={() => removeToast(id)}
+              className="toast-close"
+              aria-label="Close"
+            >
               ×
             </button>
           </div>
@@ -64,84 +69,5 @@ const getIcon = (type) => {
   };
   return icons[type] || icons.info;
 };
-
-const styles = {
-  container: {
-    position: "fixed",
-    bottom: "20px",
-    right: "20px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "10px",
-    zIndex: 9999,
-  },
-  toast: {
-    padding: "15px 20px",
-    borderRadius: "8px",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-    color: "white",
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-    minWidth: "320px",
-    maxWidth: "400px",
-    animation: "slideIn 0.3s ease",
-    fontSize: "14px",
-    fontWeight: "500",
-  },
-  success: {
-    background: "linear-gradient(135deg, #4caf50 0%, #45a049 100%)",
-  },
-  error: {
-    background: "linear-gradient(135deg, #f44336 0%, #e53935 100%)",
-  },
-  warning: {
-    background: "linear-gradient(135deg, #ff9800 0%, #fb8c00 100%)",
-  },
-  info: {
-    background: "linear-gradient(135deg, #2196f3 0%, #1e88e5 100%)",
-  },
-  icon: {
-    fontSize: "18px",
-    fontWeight: "bold",
-    flexShrink: 0,
-  },
-  message: {
-    flex: 1,
-  },
-  close: {
-    background: "transparent",
-    border: "none",
-    color: "white",
-    fontSize: "24px",
-    cursor: "pointer",
-    padding: 0,
-    lineHeight: 1,
-    opacity: 0.8,
-    transition: "opacity 0.2s",
-    flexShrink: 0,
-  },
-};
-
-// Add slide-in animation
-if (typeof document !== "undefined") {
-  const style = document.createElement("style");
-  style.textContent = `
-    @keyframes slideIn {
-      from {
-        transform: translateX(400px);
-        opacity: 0;
-      }
-      to {
-        transform: translateX(0);
-        opacity: 1;
-      }
-    }
-  `;
-  if (!document.querySelector("style[data-toast-animation]")) {
-    style.setAttribute("data-toast-animation", "true");
-    document.head.appendChild(style);
-  }
-}
 
 export default ToastProvider;

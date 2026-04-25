@@ -164,6 +164,7 @@ async function testQueryHandler(req, res) {
 router.get("/", async (req, res) => {
   const pool = getPool();
   let connection;
+  const eventManager = req.app.get("eventManager");
 
   try {
     connection = await pool.getConnection();
@@ -191,9 +192,27 @@ router.get("/", async (req, res) => {
       }
     );
 
+    const eventStatsMap = new Map();
+    if (eventManager) {
+      for (const item of eventManager.getMemoryStats()) {
+        eventStatsMap.set(item.eventId, item);
+      }
+    }
+
+    const mergedRows = result.rows.map((row) => {
+      const runtime = eventStatsMap.get(row.EVENT_ID);
+      return {
+        ...row,
+        RUNTIME_HEALTH: runtime?.health || null,
+        RUNTIME_STATS: runtime?.stats || null,
+        RUNTIME_STATUS: runtime?.stats?.lastExecutionStatus || null,
+        RUNTIME_LAST_EXECUTION_TIME: runtime?.stats?.lastExecutionTime || null,
+      };
+    });
+
     res.json({
       success: true,
-      data: result.rows,
+      data: mergedRows,
     });
   } catch (error) {
     console.error("Error fetching events:", error.message);
@@ -218,6 +237,7 @@ router.get("/:id", async (req, res) => {
   const eventId = parseInt(req.params.id);
   const pool = getPool();
   let connection;
+  const eventManager = req.app.get("eventManager");
 
   try {
     connection = await pool.getConnection();
@@ -240,9 +260,17 @@ router.get("/:id", async (req, res) => {
       });
     }
 
+    const runtime = eventManager ? eventManager.getEventStats(eventId) : null;
+
     res.json({
       success: true,
-      data: result.rows[0],
+      data: {
+        ...result.rows[0],
+        RUNTIME_HEALTH: runtime?.health || null,
+        RUNTIME_STATS: runtime?.stats || null,
+        RUNTIME_STATUS: runtime?.stats?.lastExecutionStatus || null,
+        RUNTIME_LAST_EXECUTION_TIME: runtime?.stats?.lastExecutionTime || null,
+      },
     });
   } catch (error) {
     console.error("Error fetching event:", error.message);

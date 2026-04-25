@@ -5,11 +5,11 @@ import Layout from "../components/Layout";
 const Dashboard = () => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     fetchStats();
-    const interval = setInterval(fetchStats, 5000); // Refresh every 5s
+    const interval = setInterval(fetchStats, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -17,31 +17,15 @@ const Dashboard = () => {
     try {
       const response = await monitoringAPI.getStats();
       setStats(response.data.data);
-      setError(null);
-    } catch (err) {
-      setError("Failed to fetch stats");
+      setError("");
+    } catch {
+      setError("Failed to fetch dashboard stats.");
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
-    return (
-      <Layout>
-        <div style={styles.loading}>Loading...</div>
-      </Layout>
-    );
-  }
-
-  if (error) {
-    return (
-      <Layout>
-        <div style={styles.error}>{error}</div>
-      </Layout>
-    );
-  }
-
-  const formatUptime = (seconds) => {
+  const formatUptime = (seconds = 0) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     return `${hours}h ${minutes}m`;
@@ -49,293 +33,107 @@ const Dashboard = () => {
 
   return (
     <Layout>
-      <h1 style={styles.title}>Dashboard Overview</h1>
-
-      <div style={styles.grid}>
-        <div style={styles.card}>
-          <div style={styles.cardIcon}>🔌</div>
-          <div style={styles.cardTitle}>WebSocket Connections</div>
-          <div style={styles.cardValue}>
-            {stats?.websocket.connectedClients || 0}
-          </div>
-          <div style={styles.cardSubtext}>Active clients</div>
-        </div>
-
-        <div style={styles.card}>
-          <div style={styles.cardIcon}>📊</div>
-          <div style={styles.cardTitle}>Active Events</div>
-          <div style={styles.cardValue}>{stats?.events.length || 0}</div>
-          <div style={styles.cardSubtext}>Running queries</div>
-        </div>
-
-        <div style={styles.card}>
-          <div style={styles.cardIcon}>💾</div>
-          <div style={styles.cardTitle}>Database Connections</div>
-          <div style={styles.cardValue}>
-            {stats?.database.connectionsInUse || 0}/
-            {stats?.database.poolMax || 0}
-          </div>
-          <div style={styles.cardSubtext}>Pool usage</div>
-        </div>
-
-        <div style={styles.card}>
-          <div style={styles.cardIcon}>⏱️</div>
-          <div style={styles.cardTitle}>Uptime</div>
-          <div style={styles.cardValue}>
-            {formatUptime(stats?.system.uptime || 0)}
-          </div>
-          <div style={styles.cardSubtext}>Server running</div>
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">Dashboard</h1>
+          <p className="page-subtitle">Live overview of websocket and event health</p>
         </div>
       </div>
 
-      <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>Memory Breakdown</h2>
-        <div style={styles.infoCard}>
-          <div style={styles.infoRow}>
-            <span>📊 Total Memory (RSS):</span>
-            <strong style={styles.highlight}>
-              {stats?.system.memoryBreakdownMB?.total || "0"} MB
-            </strong>
-          </div>
-          <div style={styles.memoryBar}>
-            <div
-              style={{
-                ...styles.memoryBarFill,
-                width: "100%",
-                background: "#e0e0e0",
-              }}
-            ></div>
-          </div>
-
-          <div style={{ ...styles.infoRow, paddingLeft: "20px" }}>
-            <span>🔷 Heap Used:</span>
-            <strong>
-              {stats?.system.memoryBreakdownMB?.heapUsed || "0"} MB
-            </strong>
-          </div>
-          <div style={{ ...styles.infoRow, paddingLeft: "20px" }}>
-            <span>🔶 External (Oracle driver):</span>
-            <strong>
-              {stats?.system.memoryBreakdownMB?.external || "0"} MB
-            </strong>
-          </div>
-          <div style={{ ...styles.infoRow, paddingLeft: "20px" }}>
-            <span>🔵 ArrayBuffers:</span>
-            <strong>
-              {stats?.system.memoryBreakdownMB?.arrayBuffers || "0"} MB
-            </strong>
-          </div>
-          <div style={{ ...styles.infoRow, paddingLeft: "20px" }}>
-            <span>⬜ Other (Code, Stack, Libs):</span>
-            <strong>{stats?.system.memoryBreakdownMB?.other || "0"} MB</strong>
-          </div>
+      {loading && (
+        <div className="surface" style={{ display: "grid", placeItems: "center" }}>
+          <div className="spinner" />
         </div>
-      </div>
+      )}
 
-      <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>System Information</h2>
-        <div style={styles.infoCard}>
-          <div style={styles.infoRow}>
-            <span>Node Version:</span>
-            <strong>{stats?.system.nodeVersion}</strong>
-          </div>
-          <div style={styles.infoRow}>
-            <span>Environment:</span>
-            <strong>{stats?.system.env}</strong>
-          </div>
-          <div style={styles.infoRow}>
-            <span>Platform:</span>
-            <strong>{stats?.system.platform}</strong>
-          </div>
-        </div>
-      </div>
+      {!loading && error && <div className="alert error">{error}</div>}
 
-      {stats?.events && stats.events.length > 0 && (
-        <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>Event Status</h2>
-          <div style={styles.table}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={styles.tableHeader}>
-                  <th style={styles.th}>Event Name</th>
-                  <th style={styles.th}>Interval</th>
-                  <th style={styles.th}>Status</th>
-                  <th style={styles.th}>Executions</th>
-                  <th style={styles.th}>Success Rate</th>
-                  <th style={styles.th}>Last Execution</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.events.map((event) => (
-                  <tr key={event.eventId} style={styles.tableRow}>
-                    <td style={styles.td}>{event.eventName}</td>
-                    <td style={styles.td}>{event.intervalSeconds}s</td>
-                    <td style={styles.td}>
-                      <span
-                        style={{
-                          ...styles.badge,
-                          ...(event.isRunning
-                            ? styles.badgeRunning
-                            : styles.badgeIdle),
-                        }}
-                      >
-                        {event.isRunning ? "Running" : "Idle"}
-                      </span>
-                    </td>
-                    <td style={styles.td}>{event.stats.totalExecutions}</td>
-                    <td style={styles.td}>
-                      {event.stats.totalExecutions > 0
-                        ? (
-                            (event.stats.successCount /
-                              event.stats.totalExecutions) *
-                            100
-                          ).toFixed(1) + "%"
-                        : "N/A"}
-                    </td>
-                    <td style={styles.td}>
-                      {event.stats.lastExecutionTime
-                        ? event.stats.lastExecutionTime + "ms"
-                        : "N/A"}
-                    </td>
+      {!loading && !error && (
+        <>
+          <section className="grid stats">
+            <article className="surface stat-card">
+              <h3>WebSocket Connections</h3>
+              <div className="stat-value">{stats?.websocket.connectedClients || 0}</div>
+              <div className="stat-note">Active clients</div>
+            </article>
+            <article className="surface stat-card">
+              <h3>Active Events</h3>
+              <div className="stat-value">{stats?.events?.length || 0}</div>
+              <div className="stat-note">Running queries</div>
+            </article>
+            <article className="surface stat-card">
+              <h3>Database Pool</h3>
+              <div className="stat-value">
+                {stats?.database.connectionsInUse || 0}/{stats?.database.poolMax || 0}
+              </div>
+              <div className="stat-note">Connections in use</div>
+            </article>
+            <article className="surface stat-card">
+              <h3>Uptime</h3>
+              <div className="stat-value">{formatUptime(stats?.system.uptime)}</div>
+              <div className="stat-note">Server running</div>
+            </article>
+          </section>
+
+          <section className="surface">
+            <h2 className="page-title" style={{ fontSize: "1.05rem" }}>System</h2>
+            <div className="grid" style={{ gap: "0.4rem", marginTop: "0.5rem" }}>
+              <div className="muted">Node: {stats?.system.nodeVersion || "-"}</div>
+              <div className="muted">Environment: {stats?.system.env || "-"}</div>
+              <div className="muted">Platform: {stats?.system.platform || "-"}</div>
+              <div className="muted">Memory (RSS): {stats?.system.memoryBreakdownMB?.total || "0"} MB</div>
+            </div>
+          </section>
+
+          {stats?.events?.length > 0 && (
+            <section className="surface table-wrap">
+              <h2 className="page-title" style={{ fontSize: "1.05rem" }}>Event Status</h2>
+              <table className="ui-table" style={{ marginTop: "0.5rem" }}>
+                <thead>
+                  <tr>
+                    <th>Event</th>
+                    <th>Interval</th>
+                    <th>Status</th>
+                    <th>Executions</th>
+                    <th>Success Rate</th>
+                    <th>Last Execution</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                </thead>
+                <tbody>
+                  {stats.events.map((event) => {
+                    const total = event.stats.totalExecutions;
+                    const successRate =
+                      total > 0
+                        ? `${((event.stats.successCount / total) * 100).toFixed(1)}%`
+                        : "N/A";
+
+                    return (
+                      <tr key={event.eventId}>
+                        <td>{event.eventName}</td>
+                        <td>{event.intervalSeconds}s</td>
+                        <td>
+                          <span className={`badge ${event.isRunning ? "success" : ""}`}>
+                            {event.isRunning ? "Running" : "Idle"}
+                          </span>
+                        </td>
+                        <td>{total}</td>
+                        <td>{successRate}</td>
+                        <td>
+                          {event.stats.lastExecutionTime
+                            ? `${event.stats.lastExecutionTime}ms`
+                            : "N/A"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </section>
+          )}
+        </>
       )}
     </Layout>
   );
-};
-
-const styles = {
-  loading: {
-    padding: "40px",
-    textAlign: "center",
-    fontSize: "18px",
-    color: "#666",
-  },
-  error: {
-    padding: "20px",
-    background: "#fee",
-    border: "1px solid #fcc",
-    borderRadius: "8px",
-    color: "#c33",
-  },
-  title: {
-    fontSize: "32px",
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: "30px",
-  },
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-    gap: "20px",
-    marginBottom: "40px",
-  },
-  card: {
-    background: "white",
-    borderRadius: "12px",
-    padding: "25px",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-  },
-  cardIcon: {
-    fontSize: "32px",
-    marginBottom: "10px",
-  },
-  cardTitle: {
-    fontSize: "14px",
-    color: "#666",
-    marginBottom: "10px",
-  },
-  cardValue: {
-    fontSize: "32px",
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: "5px",
-  },
-  cardSubtext: {
-    fontSize: "13px",
-    color: "#999",
-  },
-  section: {
-    marginBottom: "40px",
-  },
-  sectionTitle: {
-    fontSize: "22px",
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: "20px",
-  },
-  infoCard: {
-    background: "white",
-    borderRadius: "12px",
-    padding: "20px",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-  },
-  infoRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    padding: "12px 0",
-    borderBottom: "1px solid #f0f0f0",
-    fontSize: "15px",
-  },
-  table: {
-    background: "white",
-    borderRadius: "12px",
-    padding: "20px",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-    overflow: "auto",
-  },
-  tableHeader: {
-    background: "#f8f9fa",
-  },
-  th: {
-    padding: "12px",
-    textAlign: "left",
-    fontWeight: "600",
-    color: "#333",
-    fontSize: "14px",
-  },
-  tableRow: {
-    borderBottom: "1px solid #f0f0f0",
-  },
-  td: {
-    padding: "12px",
-    fontSize: "14px",
-    color: "#666",
-  },
-  badge: {
-    padding: "4px 12px",
-    borderRadius: "12px",
-    fontSize: "12px",
-    fontWeight: "500",
-  },
-  badgeRunning: {
-    background: "#e8f5e9",
-    color: "#2e7d32",
-  },
-  badgeIdle: {
-    background: "#f5f5f5",
-    color: "#666",
-  },
-  highlight: {
-    color: "#667eea",
-    fontSize: "18px",
-  },
-  memoryBar: {
-    height: "8px",
-    background: "#f0f0f0",
-    borderRadius: "4px",
-    marginBottom: "10px",
-    overflow: "hidden",
-  },
-  memoryBarFill: {
-    height: "100%",
-    borderRadius: "4px",
-    transition: "width 0.3s ease",
-  },
 };
 
 export default Dashboard;

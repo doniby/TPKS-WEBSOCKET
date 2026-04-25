@@ -16,9 +16,8 @@ const ProtectedRoute = ({ children }) => {
 
   if (loading) {
     return (
-      <div style={styles.loading}>
-        <div style={styles.spinner}></div>
-        <div>Loading...</div>
+      <div className="app-loading">
+        <div className="spinner" />
       </div>
     );
   }
@@ -32,9 +31,8 @@ const PublicRoute = ({ children }) => {
 
   if (loading) {
     return (
-      <div style={styles.loading}>
-        <div style={styles.spinner}></div>
-        <div>Loading...</div>
+      <div className="app-loading">
+        <div className="spinner" />
       </div>
     );
   }
@@ -118,40 +116,6 @@ function App() {
       </BrowserRouter>
     </ErrorBoundary>
   );
-}
-
-const styles = {
-  loading: {
-    minHeight: "100vh",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "#f5f5f5",
-    fontSize: "18px",
-    color: "#666",
-    gap: "20px",
-  },
-  spinner: {
-    width: "40px",
-    height: "40px",
-    border: "4px solid #f0f0f0",
-    borderTop: "4px solid #667eea",
-    borderRadius: "50%",
-    animation: "spin 1s linear infinite",
-  },
-};
-
-// Add spinner animation to document head
-if (typeof document !== "undefined") {
-  const style = document.createElement("style");
-  style.textContent = `
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-  `;
-  document.head.appendChild(style);
 }
 
 export default App;
