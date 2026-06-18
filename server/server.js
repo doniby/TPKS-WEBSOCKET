@@ -25,7 +25,9 @@ const app = express();
 // Initialize logger
 const logger = getLogger({
   logDir: path.join(__dirname, "../logs"),
-  minLogLevel: process.env.LOG_LEVEL || (process.env.NODE_ENV === "production" ? "warn" : "debug"),
+  minLogLevel:
+    process.env.LOG_LEVEL ||
+    (process.env.NODE_ENV === "production" ? "warn" : "debug"),
   useConsole: true,
 });
 app.set("logger", logger);
@@ -38,7 +40,7 @@ app.use(
     hsts: false, // Disable HSTS (forces HTTPS)
     crossOriginEmbedderPolicy: false,
     crossOriginOpenerPolicy: false,
-  })
+  }),
 );
 app.disable("x-powered-by");
 
@@ -64,7 +66,7 @@ app.use((req, res, next) => {
 
   res.setHeader(
     "Access-Control-Allow-Methods",
-    "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+    "GET, POST, PUT, DELETE, PATCH, OPTIONS",
   );
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.setHeader("Access-Control-Allow-Credentials", "true");
@@ -126,7 +128,8 @@ app.use((err, req, res, next) => {
   });
   res.status(err.status || 500).json({
     error: "Internal Server Error",
-    message: process.env.NODE_ENV === "production" ? "An error occurred" : err.message,
+    message:
+      process.env.NODE_ENV === "production" ? "An error occurred" : err.message,
   });
 });
 
@@ -200,7 +203,7 @@ io.on("connection", (socket) => {
   // Check connection limit
   if (activeConnections > MAX_CONNECTIONS) {
     console.warn(
-      `⚠️  Max connections reached (${MAX_CONNECTIONS}). Rejecting connection.`
+      `⚠️  Max connections reached (${MAX_CONNECTIONS}). Rejecting connection.`,
     );
     socket.emit("error", { message: "Server at capacity" });
     socket.disconnect(true);
@@ -209,15 +212,21 @@ io.on("connection", (socket) => {
   }
 
   // Build identity string for logging
-  const identity = socket.user?.appName || socket.user?.userId || socket.user?.type || "unknown";
-  const channelInfo = socket.user?.channels ? `[${[...socket.user.channels].join(",")}]` : "[ALL]";
+  const identity =
+    socket.user?.appName ||
+    socket.user?.userId ||
+    socket.user?.type ||
+    "unknown";
+  const channelInfo = socket.user?.channels
+    ? `[${[...socket.user.channels].join(",")}]`
+    : "[ALL]";
 
   console.log(
     "✅ User connected:",
     socket.id,
     `| App: ${identity}`,
     `| Channels: ${channelInfo}`,
-    `| Total: ${activeConnections}`
+    `| Total: ${activeConnections}`,
   );
 
   // Per-socket error handler
@@ -278,7 +287,7 @@ io.on("connection", (socket) => {
         // Channel authorization: skip channels the app is not allowed to receive
         if (socket.user?.channels && !socket.user.channels.has(channel)) {
           console.warn(
-            `⚠️  App "${socket.user.appName}" not authorized for channel "${channel}" — skipping`
+            `⚠️  App "${socket.user.appName}" not authorized for channel "${channel}" — skipping`,
           );
           continue;
         }
@@ -294,11 +303,11 @@ io.on("connection", (socket) => {
             cacheAge: cached.age,
           });
           console.log(
-            `📦 Sent cached "${eventName}" to ${socket.id} (${cached.age}ms old)`
+            `📦 Sent cached "${eventName}" to ${socket.id} (${cached.age}ms old)`,
           );
         } else {
           console.warn(
-            `⚠️  No cache found for "${eventName}", triggering immediate query...`
+            `⚠️  No cache found for "${eventName}", triggering immediate query...`,
           );
           // Trigger immediate execution for this event
           const triggered = await eventManager.triggerEventByName(eventName);
@@ -321,7 +330,7 @@ io.on("connection", (socket) => {
       "❌ User disconnected:",
       socket.id,
       `| Reason: ${reason}`,
-      `| Total: ${activeConnections}`
+      `| Total: ${activeConnections}`,
     );
 
     // Check sleep mode on disconnect
@@ -353,9 +362,15 @@ async function startApp() {
     app.set("io", io);
 
     // 4. Initialize MQTT bridge (loads topics from WS_MQTT_TOPICS)
-    const mqttBridge = new MqttBridge(io);
-    app.set("mqttBridge", mqttBridge);
-    await mqttBridge.start();
+    // Gated by MQTT_ENABLED — set to "false" to skip the broker connection
+    // entirely (avoids reconnect spam when no broker is available).
+    if (process.env.MQTT_ENABLED !== "false") {
+      const mqttBridge = new MqttBridge(io);
+      app.set("mqttBridge", mqttBridge);
+      await mqttBridge.start();
+    } else {
+      console.log("⏸️  MQTT bridge disabled (MQTT_ENABLED=false)");
+    }
 
     // 5. Start server
     const PORT = process.env.PORT || 3000;
@@ -373,9 +388,12 @@ async function startApp() {
     });
 
     // 6. Start periodic pool health monitoring (every 5 minutes)
-    setInterval(() => {
-      logPoolHealth();
-    }, 5 * 60 * 1000);
+    setInterval(
+      () => {
+        logPoolHealth();
+      },
+      5 * 60 * 1000,
+    );
   } catch (error) {
     console.error("❌ Startup failed:", error.message);
     process.exit(1);
@@ -428,9 +446,13 @@ process.on("uncaughtException", async (error) => {
 });
 
 process.on("unhandledRejection", (reason, promise) => {
-  logger.error("💥 Unhandled Rejection:", reason instanceof Error ? reason : new Error(String(reason)), {
-    promise: String(promise),
-  });
+  logger.error(
+    "💥 Unhandled Rejection:",
+    reason instanceof Error ? reason : new Error(String(reason)),
+    {
+      promise: String(promise),
+    },
+  );
   // Don't exit — just log. The pool ping will handle stale connections.
 });
 
