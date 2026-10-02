@@ -59,6 +59,25 @@ function authenticateSocket(socket, next) {
       try {
         const cleanToken = token.replace('Bearer ', '');
         const decoded = jwt.verify(cleanToken, JWT_SECRET);
+
+        // Short-lived app token minted by POST /api/token — same rights as the
+        // app's own appId+appSecret login, narrowed to the token's channels.
+        if (decoded.type === 'app-token') {
+          const app = AppRegistry.getInstance().apps.get(decoded.appName);
+          if (!app || !app.isActive) {
+            return next(new Error('Invalid app credentials'));
+          }
+          socket.user = {
+            type: 'registered-app',
+            appName: decoded.appName,
+            channels: Array.isArray(decoded.channels) ? new Set(decoded.channels) : null,
+            readonly: true
+          };
+          socket.authenticated = true;
+          console.log(`[Auth] App "${decoded.appName}" authenticated via token: ${socket.id}`);
+          return next();
+        }
+
         socket.user = decoded;
         socket.authenticated = true;
         return next();

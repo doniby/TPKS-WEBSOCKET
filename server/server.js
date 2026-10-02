@@ -19,6 +19,7 @@ const apiEvents = require("./routes/api-events");
 const apiMonitoring = require("./routes/api-monitoring");
 const apiApps = require("./routes/api-apps");
 const apiMqtt = require("./routes/api-mqtt");
+const apiToken = require("./routes/api-token");
 
 const app = express();
 
@@ -84,6 +85,7 @@ app.use("/api/events", apiEvents);
 app.use("/api/monitoring", apiMonitoring);
 app.use("/api/apps", apiApps);
 app.use("/api/mqtt", apiMqtt);
+app.use("/api/token", apiToken);
 
 // Basic health check (no auth required)
 app.get("/health", (req, res) => {
