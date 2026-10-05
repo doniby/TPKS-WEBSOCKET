@@ -173,10 +173,23 @@ const rateLimiter = new RateLimiterMemory({
   duration: parseInt(process.env.RATE_LIMIT_DURATION) || 1,
 });
 
+// New sockets allowed per client IP per window (default 10 per 10s).
 const connectionLimiter = new RateLimiterMemory({
-  points: 1,
-  duration: 10,
+  points: parseInt(process.env.CONN_RATE_POINTS) || 10,
+  duration: parseInt(process.env.CONN_RATE_DURATION) || 10,
 });
+
+// Proxies (e.g. NPM on 10.130.0.208) whose X-Forwarded-For we trust for the real client IP.
+const TRUSTED_PROXIES = (process.env.TRUSTED_PROXIES || "")
+  .split(",").map((s) => s.trim()).filter(Boolean);
+
+function clientIp(socket) {
+  const peer = String(socket.handshake.address || "").replace(/^::ffff:/, "");
+  const xff = socket.handshake.headers["x-forwarded-for"];
+  if (!xff || !TRUSTED_PROXIES.includes(peer)) return peer;
+  // Last entry is the one our proxy appended; earlier ones are client-supplied.
+  return String(xff).split(",").pop().trim() || peer;
+}
 
 // Track active connections
 let activeConnections = 0;
@@ -187,13 +200,13 @@ io.use(authenticateSocket);
 
 // --- CONNECTION RATE LIMITING ---
 io.use(async (socket, next) => {
-  const ip = socket.handshake.address;
+  const ip = clientIp(socket);
 
   try {
     await connectionLimiter.consume(ip);
     next();
   } catch (error) {
-    console.warn(`⚠️  Rate limit exceeded for IP: ${ip}`);
+    console.warn(`⚠️  Rate limit exceeded for IP: ${ip} (via ${socket.handshake.address})`);
     next(new Error("Too many connection attempts. Please try again later."));
   }
 });
