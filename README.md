@@ -121,6 +121,9 @@ ADMIN_PASSWORD=YourSecurePassword123!
 RATE_LIMIT_POINTS=10
 RATE_LIMIT_DURATION=1
 MAX_CONNECTIONS=100
+CONN_RATE_POINTS=10        # new sockets per client IP per window
+CONN_RATE_DURATION=10      # window in seconds
+TRUSTED_PROXIES=10.130.0.208  # proxies whose X-Forwarded-For is trusted
 ```
 
 ### 3. Frontend Setup
